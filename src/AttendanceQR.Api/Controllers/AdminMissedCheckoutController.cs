@@ -148,9 +148,10 @@ public class AdminMissedCheckoutController : ControllerBase
             _db.AuditLogs.Add(CorrectionReason.Audit(mc.EmployeeId, callerId, ip,
                 $"Unudulmuş çıxış təsdiqləndi, record {record.Id}: {record.AttendanceDate:yyyy-MM-dd} çıxış "
                 + $"{mc.RequestedCheckOutAtUtc:HH:mm} UTC (işçinin səbəbi: {mc.Reason})", reason));
-        await _db.SaveChangesAsync(ct);
-
-        await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, ct);
+        // Noted with the approval and rebuilt to the end even if the reviewer has gone (PlanRebuilds): a retry
+        // cannot repair the day, it answers AlreadyReviewed.
+        await PlanRebuilds.SaveWithNotesAsync(_db, [record.AttendanceDate], ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [record.AttendanceDate], null);
 
         return Ok(new { status = "Approved" });
     }

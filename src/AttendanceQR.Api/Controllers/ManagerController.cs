@@ -1159,6 +1159,9 @@ public class ManagerController : ControllerBase
             .ToListAsync(ct);
 
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+        // The column holds 500, and the same note goes onto every row of the batch (see LeaveNote).
+        if (note is { Length: > LeaveNote.MaxLength })
+            return BadRequest(new { error = LeaveNote.TooLong, max = LeaveNote.MaxLength });
         var created = new List<object>();
         var skipped = new List<object>();
 
@@ -1212,8 +1215,11 @@ public class ManagerController : ControllerBase
                 : Conflict(new { error = "AllOverlap", skipped });
         }
 
-        await _db.SaveChangesAsync(ct);
-        await RecomputeRangeAsync(request.FromDate, request.ToDate);
+        // The past days are noted in the same save as the leave, so an abandoned request cannot leave them reading
+        // Qayıb — see PlanRebuilds.
+        var stale = PastLeaveDays(request.FromDate, request.ToDate);
+        await PlanRebuilds.SaveWithNotesAsync(_db, stale, ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, stale, null);
 
         return Ok(new
         {
@@ -1242,10 +1248,10 @@ public class ManagerController : ControllerBase
         if (target is null)
             return denied!;
 
-        var (fromDate, toDate) = (leave.FromDate, leave.ToDate);
+        var stale = PastLeaveDays(leave.FromDate, leave.ToDate);
         _db.LeaveRecords.Remove(leave);
-        await _db.SaveChangesAsync(ct);
-        await RecomputeRangeAsync(fromDate, toDate);
+        await PlanRebuilds.SaveWithNotesAsync(_db, stale, ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, stale, null);
 
         return Ok(new { deleted = id });
     }
@@ -1255,11 +1261,8 @@ public class ManagerController : ControllerBase
     private Task RegisterPositionAsync(string? position, CancellationToken ct) =>
         NewEmployee.RegisterPositionAsync(_db, position, ct);
 
-    private async Task RecomputeRangeAsync(DateOnly from, DateOnly to)
-    {
-        for (var date = from; date <= to; date = date.AddDays(1))
-            await _dailySummaryService.GenerateForDateAsync(date, HttpContext.RequestAborted);
-    }
+    private List<DateOnly> PastLeaveDays(DateOnly from, DateOnly to) =>
+        PlanRebuilds.PastDays(from, to, ScheduleRevisions.Today(_zone));
 
     private static TimeOnly? ParseTimeOrNull(string? value) =>
         TimeOnly.TryParse(value, out var t) ? t : null;

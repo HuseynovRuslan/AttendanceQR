@@ -174,12 +174,12 @@ public class AdminAttendanceController : ControllerBase
         if (self == SelfCorrectionAnswer.Apply)
             SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.Update,
                 beforeIn, beforeOut, record.CheckInAtUtc, record.CheckOutAtUtc, reason, awaitsApproval: false, ip);
-        await _db.SaveChangesAsync();
+        await PlanRebuilds.SaveWithNotesAsync(_db, [record.AttendanceDate], default);
 
         if (self is null)
             await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, ip, $"{before} → {Times(record)}", reason);
 
-        await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [record.AttendanceDate], _logger);
 
         return Ok(Project(record));
     }
@@ -282,7 +282,7 @@ public class AdminAttendanceController : ControllerBase
         if (closed.Count == 0 && awaiting == 0)
             return Ok(new { closed = 0, skipped, awaiting, flexible });
 
-        await _db.SaveChangesAsync(ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, days, ct);
 
         // One audit row per record, exactly as a single edit writes — a batch must not be cheaper to
         // audit than the twenty clicks it replaces. The batch's one reason goes on every row. One's own day
@@ -290,8 +290,7 @@ public class AdminAttendanceController : ControllerBase
         foreach (var r in closed.Where(r => !ownClosed.Contains(r.Id)))
             await WriteAuditAsync(r.EmployeeId, requesterId, r.Id, ip, $"closed at shift end, {Times(r)}", reason);
 
-        foreach (var day in days)
-            await _dailySummaryService.GenerateForDateAsync(day, ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, days, _logger);
 
         return Ok(new { closed = closed.Count, skipped, awaiting, flexible });
     }
@@ -377,12 +376,12 @@ public class AdminAttendanceController : ControllerBase
         if (self == SelfCorrectionAnswer.Apply)
             SelfCorrection.Record(_db, record.EmployeeId, record.Id, request.Date, SelfCorrection.Create,
                 null, null, record.CheckInAtUtc, record.CheckOutAtUtc, reason, awaitsApproval: false, ip);
-        await _db.SaveChangesAsync();
+        await PlanRebuilds.SaveWithNotesAsync(_db, [request.Date], default);
 
         if (self is null)
             await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, ip, $"created {request.Date:yyyy-MM-dd} {Times(record)}", reason);
 
-        await _dailySummaryService.GenerateForDateAsync(request.Date, HttpContext.RequestAborted);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [request.Date], _logger);
 
         return Ok(Project(record));
     }
@@ -428,11 +427,11 @@ public class AdminAttendanceController : ControllerBase
             if (self == SelfCorrectionAnswer.Apply)
                 SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.ClearCheckout,
                     record.CheckInAtUtc, beforeOut, record.CheckInAtUtc, null, reason, awaitsApproval: false, ip);
-            await _db.SaveChangesAsync();
+            await PlanRebuilds.SaveWithNotesAsync(_db, [record.AttendanceDate], default);
 
             if (self is null)
                 await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, ip, $"check-out cleared, {before} → {Times(record)}", reason);
-            await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
+            await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [record.AttendanceDate], _logger);
         }
 
         return Ok(Project(record));
@@ -652,13 +651,13 @@ public class AdminAttendanceController : ControllerBase
             }
         }
 
-        await _db.SaveChangesAsync(ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [record.AttendanceDate], ct);
 
         // The day has to be re-judged without the voided scan, or the summary keeps its hours and the
         // board disagrees with the records it is built from. Today is deliberately refused by the
         // summary job (today is computed live everywhere), so this is a no-op for a same-day void —
         // which is correct: the live path already skips voided records.
-        await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [record.AttendanceDate], _logger);
 
         // Last, and best-effort. A phone with no live subscription must not make the void fail.
         var reached = 0;
@@ -724,8 +723,8 @@ public class AdminAttendanceController : ControllerBase
         record.VoidedAtUtc = null;
         record.VoidedByEmployeeId = null;
         record.VoidReason = null;
-        await _db.SaveChangesAsync(ct);
-        await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [record.AttendanceDate], ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [record.AttendanceDate], _logger);
 
         return Ok(new { unvoided = recordId, date = record.AttendanceDate });
     }
@@ -793,7 +792,7 @@ public class AdminAttendanceController : ControllerBase
 
         var photoKey = record.CheckInPhotoKey;
         _db.AttendanceRecords.Remove(record);
-        await _db.SaveChangesAsync();
+        await PlanRebuilds.SaveWithNotesAsync(_db, [date], default);
 
         if (photoKey is not null)
         {
@@ -811,7 +810,7 @@ public class AdminAttendanceController : ControllerBase
 
         // The day has to be re-judged without it — otherwise the summary keeps the deleted row's
         // hours and the board disagrees with the record it is built from.
-        await _dailySummaryService.GenerateForDateAsync(date, HttpContext.RequestAborted);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [date], _logger);
 
         return Ok(new { deleted = recordId, employeeId, date });
     }
@@ -1110,9 +1109,9 @@ public class AdminAttendanceController : ControllerBase
                          + $"{SelfCorrection.Times(row.CheckInBeforeUtc, row.CheckOutBeforeUtc)} → {SelfCorrection.Times(row.CheckInAfterUtc, row.CheckOutAfterUtc)}. Səbəb: {reason}"),
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
-        await _db.SaveChangesAsync(ct);
-        if (request.Approve)
-            await _dailySummaryService.GenerateForDateAsync(row.AttendanceDate, ct);
+        DateOnly[] stale = request.Approve ? [row.AttendanceDate] : [];
+        await PlanRebuilds.SaveWithNotesAsync(_db, stale, ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, stale, _logger);
         return Ok(new { status = request.Approve ? "Approved" : "Rejected" });
     }
 

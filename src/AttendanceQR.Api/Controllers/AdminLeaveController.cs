@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
@@ -26,11 +27,17 @@ public class AdminLeaveController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly IDailySummaryService _dailySummaryService;
+    private readonly TimeZoneInfo _zone;
+    private readonly ILogger<AdminLeaveController>? _logger;
 
-    public AdminLeaveController(AppDbContext db, IDailySummaryService dailySummaryService)
+    public AdminLeaveController(
+        AppDbContext db, IDailySummaryService dailySummaryService, AppOptions appOptions,
+        ILogger<AdminLeaveController>? logger = null)
     {
         _db = db;
         _dailySummaryService = dailySummaryService;
+        _zone = ScheduleRevisions.Zone(appOptions.TimeZone);
+        _logger = logger;
     }
 
     [Permission(AccessPermissions.LeavesView, AtCompany = true)]
@@ -92,6 +99,10 @@ public class AdminLeaveController : ControllerBase
 
         var requesterId = User.EmployeeId();
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+        // The column holds 500 (LeaveRecords.Note). Checked here because the same note goes onto every row of the
+        // batch: one pasted doctor's note over the limit used to fail the whole crew's save with a 500 and no reason.
+        if (note is { Length: > LeaveNote.MaxLength })
+            return BadRequest(new { error = LeaveNote.TooLong, max = LeaveNote.MaxLength });
         var created = new List<object>();
         var skipped = new List<object>();
 
@@ -137,9 +148,11 @@ public class AdminLeaveController : ControllerBase
         if (created.Count == 0)
             return Conflict(new { error = "AllOverlap", skipped });
 
-        await _db.SaveChangesAsync(ct);
-        // One recompute for the whole batch — the range is the same for everybody in it.
-        await RecomputeRangeAsync(request.FromDate, request.ToDate);
+        // One recompute for the whole batch — the range is the same for everybody in it. The past days are noted in
+        // the same save as the leave, so an abandoned request cannot leave them reading Qayıb (PlanRebuilds).
+        var stale = PastDays(request.FromDate, request.ToDate);
+        await PlanRebuilds.SaveWithNotesAsync(_db, stale, ct);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, stale, _logger);
 
         return Ok(new
         {
@@ -159,18 +172,14 @@ public class AdminLeaveController : ControllerBase
         if (leave is null)
             return NotFound(new { error = "NotFound" });
 
-        var (from, to) = (leave.FromDate, leave.ToDate);
+        var stale = PastDays(leave.FromDate, leave.ToDate);
         _db.LeaveRecords.Remove(leave);
-        await _db.SaveChangesAsync();
-
-        await RecomputeRangeAsync(from, to);
+        await PlanRebuilds.SaveWithNotesAsync(_db, stale, HttpContext.RequestAborted);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, stale, _logger);
 
         return Ok(new { deleted = id });
     }
 
-    private async Task RecomputeRangeAsync(DateOnly from, DateOnly to)
-    {
-        for (var date = from; date <= to; date = date.AddDays(1))
-            await _dailySummaryService.GenerateForDateAsync(date, HttpContext.RequestAborted);
-    }
+    private List<DateOnly> PastDays(DateOnly from, DateOnly to) =>
+        PlanRebuilds.PastDays(from, to, ScheduleRevisions.Today(_zone));
 }
