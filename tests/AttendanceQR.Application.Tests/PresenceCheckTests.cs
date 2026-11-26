@@ -9,10 +9,13 @@ using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace AttendanceQR.Application.Tests;
@@ -578,6 +581,139 @@ public class PresenceCheckTests
     private static JsonElement Json(IActionResult result) =>
         JsonSerializer.SerializeToElement(Assert.IsAssignableFrom<ObjectResult>(result).Value);
 
+    // --- a branch that asks everybody (Location.PresenceCheckEveryHours) ---------------------------------------
+
+    [Fact]
+    public void Every_two_hours_is_one_check_in_each_stretch_an_hour_apart_at_least_whatever_the_draw()
+    {
+        // 09:22–17:40 is 8 h 18 min: four stretches of about two hours, one random moment in each.
+        var (start, end) = (At(9, 22), At(17, 40));
+        var stretch = (end - start) / 4;
+        for (var seed = 0; seed < 500; seed++)
+        {
+            var times = PresenceCheckRules.PlanCadence(start, end, 2, new Random(seed));
+
+            Assert.Equal(4, times.Count);
+            for (var i = 0; i < times.Count; i++)
+                Assert.InRange(times[i], start + stretch * i, start + stretch * (i + 1));
+            for (var i = 1; i < times.Count; i++)
+                Assert.True(times[i] - times[i - 1] >= PresenceCheckRules.MinGap, $"seed {seed}: {times[i - 1]:t}–{times[i]:t}");
+        }
+    }
+
+    [Fact]
+    public void A_window_shorter_than_the_rate_still_gets_one_check_and_an_empty_one_none()
+    {
+        var only = Assert.Single(PresenceCheckRules.PlanCadence(At(16, 0), At(17, 40), 2, new Random(3)));
+        Assert.InRange(only, At(16, 0), At(17, 40));
+
+        Assert.Empty(PresenceCheckRules.PlanCadence(At(17, 40), At(17, 40), 2, new Random(3)));
+    }
+
+    [Fact]
+    public async Task At_a_branch_that_asks_everybody_a_person_nobody_switched_on_is_asked_every_two_hours()
+    {
+        using var w = new World();
+        w.Cadence(w.SiteA, 2);
+        w.Open(w.Worker, At(9, 2));
+
+        var outcome = await w.Sweep(new FakeNotifier(), At(9, 10));
+
+        Assert.Equal(4, outcome.Planned);   // 09:22–17:40
+        var checks = w.Db.PresenceChecks.OrderBy(c => c.DueAtUtc).ToList();
+        Assert.All(checks, c => Assert.InRange(c.DueAtUtc, At(9, 22), At(17, 40)));
+        Assert.Equal([0, 1, 2, 3], checks.Select(c => c.Slot));
+
+        // Planned once: a second pass adds nothing.
+        Assert.Equal(0, (await w.Sweep(new FakeNotifier(), At(9, 11))).Planned);
+    }
+
+    [Fact]
+    public async Task The_branch_rule_goes_by_where_the_day_was_opened_not_by_the_home_branch()
+    {
+        using var w = new World();
+        w.Cadence(w.SiteB, 2);              // Worker's home is SiteA; the day below is opened at SiteA
+        w.Open(w.Worker, At(9, 2));
+
+        Assert.Equal(0, (await w.Sweep(new FakeNotifier(), At(9, 10))).Planned);
+    }
+
+    [Fact]
+    public async Task A_branch_check_goes_out_without_the_persons_own_switch_and_stops_when_the_branch_stops()
+    {
+        using var w = new World();
+        w.Cadence(w.SiteA, 2);
+        var day = w.Open(w.Worker, At(9, 2));
+        var first = w.Planned(day, At(10, 0), slot: 0);
+        var second = w.Planned(day, At(12, 0), slot: 1);
+        var push = new FakeNotifier();
+
+        await w.Sweep(push, At(10, 1));
+        Assert.NotNull(w.Reload(first).SentAtUtc);
+        Assert.Single(push.Sent);
+
+        // The branch stops asking: what it drew and has not sent is cancelled, not fired.
+        w.Cadence(w.SiteA, null);
+        await w.Sweep(push, At(12, 1));
+        Assert.Equal(PresenceCheckResult.Cancelled, w.Reload(second).Result);
+        Assert.Equal(PresenceCheckRules.NoteDisabled, w.Reload(second).Note);
+        Assert.Single(push.Sent);
+    }
+
+    [Fact]
+    public async Task Switching_one_persons_switch_off_does_not_exempt_them_from_the_branch_rule()
+    {
+        using var w = new World();
+        w.Cadence(w.SiteA, 2);
+        w.SwitchOn(w.Worker);
+        var day = w.Open(w.Worker, At(9, 2));
+        var planned = w.Planned(day, At(15, 0));
+
+        await w.Panel(w.Admin, "Admin", At(12, 0)).Set(w.Worker, new(null));
+
+        Assert.Equal(PresenceCheckResult.Pending, w.Reload(planned).Result);
+    }
+
+    [Fact]
+    public async Task Only_an_admin_sets_the_branch_rule_it_is_written_down_and_only_two_three_or_four_hours()
+    {
+        using var w = new World();
+
+        var refused = await w.Branches(w.ManagerA, "Manager").Update(w.SiteA, w.BranchForm(every: 2));
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(refused).StatusCode);
+        Assert.Null(w.Site(w.SiteA).PresenceCheckEveryHours);
+
+        Assert.IsType<BadRequestObjectResult>(await w.Branches(w.Admin, "Admin").Update(w.SiteA, w.BranchForm(every: 5)));
+
+        Assert.IsType<OkObjectResult>(await w.Branches(w.Admin, "Admin").Update(w.SiteA, w.BranchForm(every: 2)));
+        Assert.Equal(2, w.Site(w.SiteA).PresenceCheckEveryHours);
+        Assert.Contains(w.Db.AuditLogs.AsNoTracking(), a =>
+            a.EventType == AuditEventType.PresenceCheckSettingChanged && a.EmployeeId == w.Admin
+            && a.Reason == "branch Mərkəz: every 2h");
+
+        // A form that does not mention it leaves it alone — a manager's ordinary edit included.
+        Assert.IsType<OkObjectResult>(await w.Branches(w.ManagerA, "Manager").Update(w.SiteA, w.BranchForm(every: null)));
+        Assert.Equal(2, w.Site(w.SiteA).PresenceCheckEveryHours);
+
+        // 0 switches it off.
+        Assert.IsType<OkObjectResult>(await w.Branches(w.Admin, "Admin").Update(w.SiteA, w.BranchForm(every: 0)));
+        Assert.Null(w.Site(w.SiteA).PresenceCheckEveryHours);
+    }
+
+    [Fact]
+    public async Task The_persons_card_says_the_branch_asks_everybody_even_when_their_own_switch_is_off()
+    {
+        using var w = new World();
+        w.Cadence(w.SiteA, 3);
+
+        var view = JsonSerializer.SerializeToElement(
+            Assert.IsType<OkObjectResult>(await w.Panel(w.Admin, "Admin", At(12, 0)).Get(w.Worker)).Value);
+
+        Assert.False(view.GetProperty("on").GetBoolean());
+        Assert.Equal(3, view.GetProperty("branchEveryHours").GetInt32());
+        Assert.Equal("Mərkəz", view.GetProperty("branchName").GetString());
+    }
+
     private static ControllerContext Context(Guid who, string role) => new()
     {
         HttpContext = new DefaultHttpContext
@@ -712,6 +848,25 @@ public class PresenceCheckTests
 
         public PresenceCheck Reload(PresenceCheck check) =>
             Db.PresenceChecks.AsNoTracking().Single(c => c.Id == check.Id);
+
+        public void Cadence(Guid site, int? everyHours)
+        {
+            Db.Locations.Single(l => l.Id == site).PresenceCheckEveryHours = everyHours;
+            Db.SaveChanges();
+        }
+
+        public Location Site(Guid site) => Db.Locations.AsNoTracking().Single(l => l.Id == site);
+
+        /// <summary>SiteA's form as the branch page sends it, with the cadence field as given.</summary>
+        public LocationRequest BranchForm(int? every) =>
+            new("Mərkəz", BranchLat, BranchLng, 150, "09:00", "18:00", 15, 127, PresenceCheckEveryHours: every);
+
+        public AdminLocationsController Branches(Guid who, string role) =>
+            new(Db,
+                new QrTokenService(Options.Create(new QrTokenOptions { Secret = "test-secret-for-presence-cadence", TtlSeconds = 60 })),
+                new OffFaceMatch(),
+                NullLogger<AdminLocationsController>.Instance)
+            { ControllerContext = Context(who, role) };
 
         public Task<PresenceSweepOutcome> Sweep(IPushNotifier push, DateTime nowUtc) =>
             PresenceCheckSweep.RunAsync(Db, push, pushConfigured: true, nowUtc, Baku, new Random(42));

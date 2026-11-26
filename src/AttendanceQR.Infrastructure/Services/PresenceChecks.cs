@@ -50,6 +50,13 @@ public static class PresenceCheckRules
     /// <summary>The durations a manager may choose. There is no «until switched off».</summary>
     public static readonly int[] AllowedDays = [7, 14, 30];
 
+    /// <summary>
+    /// How often a branch-wide setting (<see cref="Domain.Entities.Location.PresenceCheckEveryHours"/>) may ask.
+    /// Not every hour: with the hour's gap and the quiet start and end, that would be a question every time
+    /// somebody sat down.
+    /// </summary>
+    public static readonly int[] AllowedEveryHours = [2, 3, 4];
+
     /// <summary>What the person reads. Neutral: no «şübhə», no «nəzarət» — it asks, it does not accuse.</summary>
     public const string PushTitle = "Yerinizi təsdiqləyin";
     public const string PushBody = "Tətbiqi açıb düyməni sıxın. 15 dəqiqə vaxtınız var.";
@@ -108,6 +115,39 @@ public static class PresenceCheckRules
         if (a > b)
             (a, b) = (b, a);
         return [start.AddMinutes(a), start.AddMinutes(b + gap)];
+    }
+
+    /// <summary>
+    /// The branch-wide cadence: about one check every <paramref name="everyHours"/> hours of the window. The window is
+    /// cut into equal stretches, as many whole <paramref name="everyHours"/> as fit (at least one), and one moment is
+    /// drawn at random inside each — so the person knows roughly how often, never when. Each moment is at least
+    /// <see cref="MinGap"/> after the one before, so the end of one stretch and the start of the next never ask twice
+    /// in a row. Not capped by <see cref="MaxPerDay"/>: that cap is the per-person switch's, and the branch chose the
+    /// rate itself.
+    /// </summary>
+    public static IReadOnlyList<DateTime> PlanCadence(DateTime start, DateTime end, int everyHours, Random random)
+    {
+        if (everyHours <= 0 || end <= start)
+            return [];
+
+        var minutes = (end - start).TotalMinutes;
+        var count = Math.Max(1, (int)Math.Floor(minutes / (everyHours * 60.0)));
+        var stretch = minutes / count;
+        var times = new List<DateTime>(count);
+        DateTime? previous = null;
+        for (var i = 0; i < count; i++)
+        {
+            var from = start.AddMinutes(i * stretch);
+            var to = start.AddMinutes((i + 1) * stretch);
+            if (previous is DateTime p && p + MinGap > from)
+                from = p + MinGap;
+            if (from >= to)
+                continue;
+            var moment = from.AddMinutes(random.NextDouble() * (to - from).TotalMinutes);
+            times.Add(moment);
+            previous = moment;
+        }
+        return times;
     }
 
     /// <summary>

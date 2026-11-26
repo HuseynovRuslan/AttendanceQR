@@ -69,8 +69,8 @@ export function PresenceChecksCard({ employeeId }: { employeeId: string }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
         <div className="card-title" style={{ margin: 0 }}>Mövcudluq yoxlaması</div>
         {view && (
-          <span className="tag" style={view.on ? TONE.ok : undefined}>
-            {view.on ? 'Açıq' : 'Söndürülüb'}
+          <span className="tag" style={view.on || view.branchEveryHours ? TONE.ok : undefined}>
+            {view.on ? 'Açıq' : view.branchEveryHours ? 'Filial üzrə açıq' : 'Söndürülüb'}
           </span>
         )}
       </div>
@@ -79,6 +79,17 @@ export function PresenceChecksCard({ employeeId }: { employeeId: string }) {
         Filialdan kənarda cavab versə, sizə bildiriş gəlir. Cavabsız yoxlamalar yalnız burada sayılır.
         Giriş, saat və maaşa heç nə təsir etmir.
       </div>
+
+      {view?.branchEveryHours ? (
+        <div className="fb fb-info" style={{ marginBottom: 12, fontSize: 13 }}>
+          <IconCheck />
+          <span>
+            «{view.branchName}» filialında giriş edən hər kəsdən təxminən <b>hər {view.branchEveryHours} saatdan bir</b> yerini
+            təsdiqləməsi istənir — filial ayarıdır (Filiallar səhifəsində dəyişilir). Aşağıdakı düymə yalnız bu işçinin
+            öz ayarıdır.
+          </span>
+        </div>
+      ) : null}
 
       {error && <div className="fb fb-err" style={{ marginBottom: 10 }}><IconX /><span>{error}</span></div>}
 

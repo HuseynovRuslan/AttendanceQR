@@ -34,6 +34,8 @@ type FormState = {
   requireGeofence: boolean
   /** «Ştat» as typed; empty = not set. */
   headcount: string
+  /** «Mövcudluq yoxlaması» for everybody here: every N hours, 0 = off. */
+  presenceEveryHours: number
 }
 
 // Index = JS Date.getDay() / .NET DayOfWeek (Sunday=0 ... Saturday=6) — same convention as the
@@ -53,6 +55,7 @@ const EMPTY: FormState = {
   qrlessCheckIn: false,
   requireGeofence: true,
   headcount: '',
+  presenceEveryHours: 0,
 }
 
 const ERRORS: Record<string, string> = {
@@ -68,13 +71,19 @@ const ERRORS: Record<string, string> = {
   LocationNotFound: 'Filial tapılmadı',
   WorkDaysMaskInvalid: 'İş günləri seçimi yanlışdır',
   FaceMatchDisabled: 'Üz tanıma bu serverdə söndürülüb — QR-siz giriş açıla bilməz (selfi yeganə lövbərdir)',
+  PresenceIntervalInvalid: 'Mövcudluq yoxlaması yalnız 2, 3 və ya 4 saatdan bir ola bilər',
+  PresenceCadenceAdminOnly: 'Filialın mövcudluq yoxlamasını yalnız admin dəyişə bilər',
 }
+
+/** How often a branch may ask everybody (PresenceCheckRules.AllowedEveryHours on the server). */
+const PRESENCE_EVERY_HOURS = [2, 3, 4]
 
 export function LocationsPage() {
   // Admin's shape for the Company administrator, the narrowed one for everybody else in Enforced. Below,
   // each action asks for its own right: an observer sees the branches and touches none of them.
   const role = useScopedRole('locations.view')
   const isManager = role === 'Manager'
+  const isAdmin = role === 'Admin'
   const mayEdit = useHolds('locations.update', true)
   const mayPrint = useHolds('locations.qr_print', true)
   // Pasting a map link beats typing two long decimals — see geoLink for the shapes Google produces.
@@ -214,6 +223,7 @@ export function LocationsPage() {
       qrlessCheckIn: l.qrlessCheckIn,
       requireGeofence: l.requireGeofence,
       headcount: l.headcount ? String(l.headcount) : '',
+      presenceEveryHours: l.presenceCheckEveryHours ?? 0,
     })
     setError(null)
     setOk(null)
@@ -238,6 +248,8 @@ export function LocationsPage() {
       requireGeofence: form.requireGeofence,
       // Empty field = clear it (0); the server keeps null for «not set».
       headcount: form.headcount.trim() === '' ? 0 : Math.max(0, Math.floor(Number(form.headcount)) || 0),
+      // Admin only: anybody else's form leaves it as it is (omitted), whatever it shows.
+      ...(isAdmin ? { presenceCheckEveryHours: form.presenceEveryHours } : {}),
     }
     const { status, data } = editingId
       ? await updateLocation(editingId, payload)
@@ -606,6 +618,31 @@ export function LocationsPage() {
               GPS divarı da sönülüdür — bu filialda yerlə bağlı heç bir yoxlama qalmır, yeganə lövbər
               selfi və üz tanımadır.</>
             )}
+          </p>
+        </div>
+
+        {/* Asked of everybody at the place, like the poster's absence above — set once here, inherited by a
+            new hire. The per-person switch on the employee's profile still works on its own. */}
+        <div className="form-row">
+          <label className="form-label" htmlFor="loc-presence">Mövcudluq yoxlaması</label>
+          <select
+            id="loc-presence"
+            className="inp"
+            value={form.presenceEveryHours}
+            disabled={!isAdmin}
+            onChange={(e) => setForm((f) => ({ ...f, presenceEveryHours: Number(e.target.value) }))}
+          >
+            <option value={0}>Söndürülüb</option>
+            {PRESENCE_EVERY_HOURS.map((h) => (
+              <option key={h} value={h}>Hər {h} saatdan bir</option>
+            ))}
+          </select>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Bu filialda giriş etmiş hər kəsdən iş günü ərzində təxminən seçilən saatdan bir, təsadüfi anda yerini
+            təsdiqləməsi istənir (telefona bildiriş gəlir, 15 dəqiqə vaxt var). Girişdən sonrakı və növbə bitməzdən
+            əvvəlki 20 dəqiqədə soruşulmur. Filialdan kənarda cavab versə, menecerə bildiriş gəlir. Giriş, saat və
+            maaşa heç nə təsir etmir.
+            {!isAdmin && <><br />Bu ayarı yalnız admin dəyişə bilər.</>}
           </p>
         </div>
 

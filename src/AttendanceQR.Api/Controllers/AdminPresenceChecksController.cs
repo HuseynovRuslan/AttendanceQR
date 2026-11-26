@@ -70,9 +70,13 @@ public class AdminPresenceChecksController : ControllerBase
         if (days == 0)
         {
             employee.PresenceCheckUntilUtc = null;
-            // Off means off now, not after the checks already drawn for today have gone out.
+            // Off means off now, not after the checks already drawn for today have gone out — except those drawn by a
+            // branch that asks everybody (Location.PresenceCheckEveryHours): this switch is the person's, not the
+            // branch's, and switching it off must not exempt one person from the branch's rule.
+            var cadenceIds = (await Jobs.PresenceCheckSweep.CadenceBranchesAsync(_db, ct)).Keys.ToList();
             var planned = await _db.PresenceChecks
-                .Where(c => c.EmployeeId == employeeId && c.Result == PresenceCheckResult.Pending && c.SentAtUtc == null)
+                .Where(c => c.EmployeeId == employeeId && c.Result == PresenceCheckResult.Pending && c.SentAtUtc == null
+                            && !cadenceIds.Contains(c.LocationId))
                 .ToListAsync(ct);
             foreach (var check in planned)
             {
@@ -140,9 +144,18 @@ public class AdminPresenceChecksController : ControllerBase
         var weekAgo = now.AddDays(-7);
         var week = asked.Where(c => c.sentAtUtc >= weekAgo).ToList();
 
+        // The home branch's own rule, if it asks everybody — so the card does not say «Söndürülüb» about a person
+        // who is asked every two hours anyway.
+        var home = await _db.Locations.AsNoTracking()
+            .Where(l => l.Id == employee.LocationId && l.IsActive && l.PresenceCheckEveryHours != null)
+            .Select(l => new { l.Name, l.PresenceCheckEveryHours })
+            .FirstOrDefaultAsync(ct);
+
         return new
         {
             on,
+            branchName = home?.Name,
+            branchEveryHours = home?.PresenceCheckEveryHours,
             untilUtc = on ? employee.PresenceCheckUntilUtc : null,
             setAtUtc = on ? employee.PresenceCheckSetAtUtc : null,
             setByName = setBy,

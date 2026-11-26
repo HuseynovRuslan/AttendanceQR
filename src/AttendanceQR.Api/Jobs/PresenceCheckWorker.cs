@@ -98,8 +98,8 @@ public sealed record PresenceSweepOutcome(int Planned, int Sent, int Cancelled, 
 /// One pass over one company (the caller has resolved the tenant): plan the day's checks for anybody it is on
 /// for who is checked in, send the ones that are due, and close the ones whose answer window has run out.
 ///
-/// Reads only the people presence checks are on for — usually nobody — so a pass a minute costs one indexed
-/// query per company on an ordinary day.
+/// Reads only the people presence checks are on for, and the branches that ask everybody — usually neither — so a
+/// pass a minute costs two small indexed queries per company on an ordinary day.
 /// </summary>
 public static class PresenceCheckSweep
 {
@@ -115,25 +115,36 @@ public static class PresenceCheckSweep
 
     // --- 1. plan ------------------------------------------------------------------------------------------
 
+    /// <summary>The branches asking everybody (Location.PresenceCheckEveryHours), with their rate.</summary>
+    public static async Task<Dictionary<Guid, int>> CadenceBranchesAsync(AppDbContext db, CancellationToken ct) =>
+        await db.Locations
+            .Where(l => l.IsActive && l.PresenceCheckEveryHours != null)
+            .ToDictionaryAsync(l => l.Id, l => l.PresenceCheckEveryHours!.Value, ct);
+
     private static async Task<int> PlanAsync(AppDbContext db, DateTime nowUtc, TimeZoneInfo timeZone, Random random, CancellationToken ct)
     {
-        var people = await db.Employees
+        // Two ways to be asked: the per-person switch, or checking in at a branch that asks everybody.
+        var switchedOn = await db.Employees
             .Where(e => e.IsActive && e.PresenceCheckUntilUtc != null && e.PresenceCheckUntilUtc > nowUtc)
+            .Select(e => e.Id)
             .ToListAsync(ct);
-        if (people.Count == 0)
+        var cadence = await CadenceBranchesAsync(db, ct);
+        if (switchedOn.Count == 0 && cadence.Count == 0)
             return 0;
 
-        var ids = people.Select(e => e.Id).ToList();
+        var cadenceIds = cadence.Keys.ToList();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone));
         var since = today.AddDays(-1);   // a night shift's day began yesterday
 
         var open = await db.AttendanceRecords
-            .Where(r => ids.Contains(r.EmployeeId) && r.AttendanceDate >= since
+            .Where(r => (switchedOn.Contains(r.EmployeeId) || cadenceIds.Contains(r.LocationId)) && r.AttendanceDate >= since
                         && r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.VoidedAtUtc == null)
             .ToListAsync(ct);
         if (open.Count == 0)
             return 0;
 
+        var ids = open.Select(r => r.EmployeeId).Distinct().ToList();
+        var people = await db.Employees.Where(e => e.IsActive && ids.Contains(e.Id)).ToListAsync(ct);
         var recordIds = open.Select(r => r.Id).ToList();
         var alreadyPlanned = (await db.PresenceChecks
                 .Where(c => recordIds.Contains(c.AttendanceRecordId))
@@ -155,12 +166,16 @@ public static class PresenceCheckSweep
         var added = 0;
         foreach (var record in open.Where(r => !alreadyPlanned.Contains(r.Id)))
         {
-            var employee = byId[record.EmployeeId];
+            if (!byId.TryGetValue(record.EmployeeId, out var employee))
+                continue;   // deactivated since the check-in
             if (!locations.TryGetValue(employee.LocationId, out var home))
                 continue;
 
+            // The branch's rate when the day was opened at a branch that asks everybody — it is the denser of the two,
+            // and the person's own switch adds nothing to it. Otherwise the per-person rule: two a day at most.
+            var everyHours = cadence.TryGetValue(record.LocationId, out var hours) ? hours : (int?)null;
             var left = PresenceCheckRules.MaxPerDay - perDay.GetValueOrDefault((employee.Id, record.AttendanceDate));
-            if (left <= 0)
+            if (everyHours is null && (left <= 0 || !PresenceCheckRules.IsOn(employee.PresenceCheckUntilUtc, nowUtc)))
                 continue;
 
             // The shift the scan and the reminders judge this day by — through the day's cover shift.
@@ -170,7 +185,9 @@ public static class PresenceCheckSweep
             if (PresenceCheckRules.Window(record.CheckInAtUtc.Value, nowUtc, shiftEnd) is not { } window)
                 continue;
 
-            var times = PresenceCheckRules.PlanTimes(window.Start, window.End, left, random);
+            var times = everyHours is int every
+                ? PresenceCheckRules.PlanCadence(window.Start, window.End, every, random)
+                : PresenceCheckRules.PlanTimes(window.Start, window.End, left, random);
             for (var slot = 0; slot < times.Count; slot++)
             {
                 db.PresenceChecks.Add(new PresenceCheck
@@ -250,6 +267,8 @@ public static class PresenceCheckSweep
                 .Select(v => v.EmployeeId)
                 .ToListAsync(ct))
             .ToHashSet();
+        // Still asking everybody, read now: a branch switched off since the plan cancels what it drew.
+        var cadence = await CadenceBranchesAsync(db, ct);
 
         var toSend = new List<PresenceCheck>();
         var cancelled = 0;
@@ -260,7 +279,8 @@ public static class PresenceCheckSweep
             var day = days.GetValueOrDefault(check.AttendanceRecordId);
             var reason =
                 person is null || !person.IsActive ? PresenceCheckRules.NoteInactive
-                : !PresenceCheckRules.IsOn(person.PresenceCheckUntilUtc, nowUtc) ? PresenceCheckRules.NoteDisabled
+                : !PresenceCheckRules.IsOn(person.PresenceCheckUntilUtc, nowUtc) && !cadence.ContainsKey(check.LocationId)
+                    ? PresenceCheckRules.NoteDisabled
                 : day is null || day.CheckOutAtUtc != null || day.VoidedAtUtc != null ? PresenceCheckRules.NoteDayClosed
                 : nowUtc - check.DueAtUtc > PresenceCheckRules.SendTolerance ? PresenceCheckRules.NoteStale
                 : onFieldVisit.Contains(check.EmployeeId) ? PresenceCheckRules.NoteFieldVisit
