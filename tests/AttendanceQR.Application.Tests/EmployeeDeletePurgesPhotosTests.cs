@@ -251,10 +251,8 @@ public class EmployeeDeletePurgesPhotosTests
         Assert.True(await h.Db.Employees.AnyAsync(e => e.Id == h.EmployeeId));
     }
 
-    // NOTE: the force=true path (an employee WITH attendance) is not covered here. It runs
-    // ExecuteDeleteAsync, which the EF Core InMemory provider does not implement — the check-in
-    // selfie keys are collected by the same block these tests do exercise, immediately above that
-    // call, so what is untested is the deletion of the rows, not the gathering of the keys.
+    // The force=true path (an employee WITH attendance) is covered in DeleteReferencesTests: it no longer
+    // runs ExecuteDeleteAsync (which the in-memory provider cannot), but tracked deletes in one save.
 
     [Fact]
     public async Task Storage_being_down_does_not_undo_the_deletion()
