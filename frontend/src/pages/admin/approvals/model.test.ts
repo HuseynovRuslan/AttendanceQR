@@ -87,6 +87,25 @@ describe('the «Yeni işçi» form, before anything is sent', () => {
     expect(e.note).toBeTruthy()
   })
 
+  it('refuses a first and last name that fit alone but not together, as the server does', () => {
+    // «ad soyad» is one column of 200; the space between counts.
+    const named = (first: string, last: string) => validateDraft({ ...EMPTY_DRAFT, firstName: first, lastName: last, phone: '0551234567' })
+    expect(named('A'.repeat(100), 'B'.repeat(100)).name).toContain('birlikdə')
+    expect(named('A'.repeat(100), 'B'.repeat(99))).toEqual({})
+  })
+
+  it('refuses an e-mail too long for the duplicate key only when there is no phone to key on', () => {
+    const email = `${'a'.repeat(184)}@example.az` // 195: «email:» + it is 201
+    expect(validateDraft({ ...EMPTY_DRAFT, firstName: 'Aysel', lastName: 'Məmmədova', email }).email).toBe('E-poçt çox uzundur.')
+    expect(validateDraft({ ...EMPTY_DRAFT, firstName: 'Aysel', lastName: 'Məmmədova', email: email.slice(1) })).toEqual({})
+    expect(validateDraft({ ...EMPTY_DRAFT, firstName: 'Aysel', lastName: 'Məmmədova', email, phone: '0551234567' })).toEqual({})
+  })
+
+  it('tells a text that does not fit its column with the limit', () => {
+    expect(errorText(400, { error: 'TextTooLong', field: 'note', max: 500 })).toBe('Mətn çox uzundur — ən çox 500 hərf ola bilər.')
+    expect(errorText(400, { error: 'FullNameTooLong' })).toContain('200')
+  })
+
   it('gives every press its own key', () => {
     const keys = new Set(Array.from({ length: 50 }, newIdempotencyKey))
     expect(keys.size).toBe(50)
