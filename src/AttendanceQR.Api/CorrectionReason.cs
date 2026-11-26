@@ -1,3 +1,4 @@
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 
@@ -34,7 +35,7 @@ public static class CorrectionReason
         {
             EmployeeId = employeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
-            Reason = text.Length <= 1000 ? text : text[..1000],
+            Reason = SafeText.Truncate(text, 1000),
             IpAddress = ip,
         };
     }

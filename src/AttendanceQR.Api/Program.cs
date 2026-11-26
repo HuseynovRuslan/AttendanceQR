@@ -417,7 +417,9 @@ builder.Services.AddCors(options =>
         policy.SetIsOriginAllowed(IsAllowedOrigin).AllowAnyHeader().AllowAnyMethod()));
 
 builder.Services
-    .AddControllers()
+    // A value that does not fit its column answers 400 TextTooLong/NumberTooLarge with the field and its limit,
+    // from every controller, instead of an empty 500 (FieldLimitFilter, FieldLimits).
+    .AddControllers(options => options.Filters.Add<FieldLimitFilter>())
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
@@ -94,6 +95,7 @@ public class AdminEquipmentController : ControllerBase
         var ct = HttpContext.RequestAborted;
         var fullName = (request.FullName ?? string.Empty).Trim();
         if (fullName.Length == 0) return BadRequest(new { error = "FullNameRequired" });
+        if (FirstTooLong(fullName, request) is { } tooLong) return BadRequest(FieldLimitErrors.Body(tooLong));
 
         // A blank row number means "put it at the end" rather than a validation error — someone adding
         // one person is not thinking about line numbers.
@@ -131,6 +133,7 @@ public class AdminEquipmentController : ControllerBase
 
         var fullName = (request.FullName ?? string.Empty).Trim();
         if (fullName.Length == 0) return BadRequest(new { error = "FullNameRequired" });
+        if (FirstTooLong(fullName, request) is { } tooLong) return BadRequest(FieldLimitErrors.Body(tooLong));
 
         var rowNo = request.RowNo ?? record.RowNo;
         if (rowNo != record.RowNo && await _db.EquipmentRecords.AnyAsync(r => r.Id != id && r.RowNo == rowNo, ct))
@@ -180,6 +183,9 @@ public class AdminEquipmentController : ControllerBase
     /// Lines the file no longer contains are left alone rather than deleted. A partial file (one
     /// office's sheet, say) must not be able to wipe the rest of the register, and an admin who really
     /// wants a line gone can delete it.
+    ///
+    /// A line with a cell longer than its column is skipped and named in `tooLong` (row, name, column,
+    /// limit); every other line still goes in. See the loop.
     /// </summary>
     [Permission(AccessPermissions.EquipmentManage)]
     [HttpPost("import")]
@@ -206,7 +212,8 @@ public class AdminEquipmentController : ControllerBase
         if (sheetError != EquipmentSheetError.Ok)
             return BadRequest(new { error = sheetError.ToString() });
 
-        if (parsed.Count == 0) return Ok(new { added = 0, updated = 0, linked = 0, unmatched = Array.Empty<string>() });
+        if (parsed.Count == 0)
+            return Ok(new { added = 0, updated = 0, linked = 0, unmatched = Array.Empty<string>(), tooLong = Array.Empty<object>() });
 
         var employees = await _db.Employees
             .Select(e => new { e.Id, e.FullName })
@@ -221,9 +228,28 @@ public class AdminEquipmentController : ControllerBase
 
         int added = 0, updated = 0, linked = 0;
         var unmatched = new List<string>();
+        var tooLong = new List<object>();
 
         foreach (var p in parsed)
         {
+            // A cell longer than its column. The whole file is one save, so a single such cell used to make Postgres
+            // refuse every line of it — an empty 500 and «İdxal alınmadı», with nothing to say which cell. The line is
+            // left as the register has it and named in the answer instead, and the rest of the file goes in. Not cut
+            // to fit: this is the kit somebody will order against, and «2 ədəd monitor» cut off mid-sentence is a
+            // wrong count nobody notices. The usual culprit is a note typed under the table in the name column.
+            if (FirstTooLong(p.FullName, p.Position, p.Area, p.Equipment, p.SystemUnit, p.Monitor, p.OtherEquipment)
+                is FieldTooLongException cell)
+            {
+                tooLong.Add(new
+                {
+                    rowNo = p.RowNo,
+                    fullName = p.FullName.Length <= 80 ? p.FullName : SafeText.Truncate(p.FullName, 80) + "…",
+                    field = JsonNamingPolicy.CamelCase.ConvertName(cell.Property),
+                    max = cell.MaxLength,
+                });
+                continue;
+            }
+
             var employeeId = PersonName.Resolve(p.FullName, employees, e => e.FullName, e => e.Id);
             if (employeeId is not null) linked++;
             else unmatched.Add(p.FullName);
@@ -288,7 +314,7 @@ public class AdminEquipmentController : ControllerBase
         }
 
         await _db.SaveChangesAsync(ct);
-        return Ok(new { added, updated, linked, unmatched });
+        return Ok(new { added, updated, linked, unmatched, tooLong });
     }
 
     // --- helpers -------------------------------------------------------------
@@ -303,6 +329,25 @@ public class AdminEquipmentController : ControllerBase
 
     private static string? Trimmed(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private FieldLimitException? FirstTooLong(string fullName, EquipmentRecordRequest r)
+        => FirstTooLong(fullName, Trimmed(r.Position), Trimmed(r.Area), Trimmed(r.Equipment), Trimmed(r.SystemUnit),
+            Trimmed(r.Monitor), Trimmed(r.OtherEquipment));
+
+    /// <summary>The first of a line's texts that is longer than its column (EquipmentRecordConfiguration), or null.
+    /// The limits are read from the model, so a widened column is followed here without a second edit.</summary>
+    private FieldLimitException? FirstTooLong(string fullName, string? position, string? area, string? equipment,
+        string? systemUnit, string? monitor, string? otherEquipment)
+        => Check(nameof(EquipmentRecord.FullName), fullName)
+           ?? Check(nameof(EquipmentRecord.Position), position)
+           ?? Check(nameof(EquipmentRecord.Area), area)
+           ?? Check(nameof(EquipmentRecord.Equipment), equipment)
+           ?? Check(nameof(EquipmentRecord.SystemUnit), systemUnit)
+           ?? Check(nameof(EquipmentRecord.Monitor), monitor)
+           ?? Check(nameof(EquipmentRecord.OtherEquipment), otherEquipment);
+
+    private FieldLimitException? Check(string property, string? value)
+        => FieldLimits.Check<EquipmentRecord>(_db, property, value);
 
     private static object ToDto(EquipmentRecord r) => new
     {

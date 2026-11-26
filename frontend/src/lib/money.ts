@@ -1,19 +1,26 @@
 import { formatNumber } from './numberFormat'
 
 /**
+ * The most an operator money column holds: TenantInvoices.Amount and Tenants.MonthlyPriceOverride are numeric(10,2).
+ * Anything above is a typo (a pasted VÖEN, a few extra zeros), never a bill — and the server refuses it with
+ * NumberTooLarge, so it is refused here first, where the operator is still typing.
+ */
+export const MONEY_MAX = 99_999_999.99
+
+/**
  * Parse a user-typed AZN amount to a non-negative number, or null when it is empty or ambiguous.
  *
  * Deliberately strict: digits with an OPTIONAL 1–2 digit decimal (either "." or "," as the point). This
  * rejects a fat-finger like "1.2.3" AND a thousands-formatted "1.250" (which a naive Number() would read
- * as 1.25 — a silent 1000× under-price). Callers must treat null as an error, never as "clear" or 0, so a
- * mistyped price surfaces instead of silently wiping or zeroing a bill.
+ * as 1.25 — a silent 1000× under-price), and anything above MONEY_MAX. Callers must treat null as an error, never
+ * as "clear" or 0, so a mistyped price surfaces instead of silently wiping or zeroing a bill.
  */
 export function parseMoney(raw: string): number | null {
   const s = raw.trim().replace(',', '.')
   if (!s) return null
   if (!/^\d+(\.\d{1,2})?$/.test(s)) return null
   const n = Number(s)
-  return isFinite(n) && n >= 0 ? n : null
+  return isFinite(n) && n >= 0 && n <= MONEY_MAX ? n : null
 }
 
 /** Live input sanitiser: keep digits and a single decimal point (comma → point), so the field can never

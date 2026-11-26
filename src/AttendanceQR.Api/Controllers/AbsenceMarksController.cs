@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
@@ -105,7 +106,10 @@ public class AbsenceMarksController : ControllerBase
                 .IsFlexible)
             return BadRequest(new { error = "FlexibleSchedule" });
 
-        var note = reason[..Math.Min(reason.Length, 200)]; // the column holds 200; the audit line keeps all of it
+        // The mark keeps the first 200 and the audit line below keeps all of it. The column itself is text: the 200 is
+        // what the removal's audit line can quote beside its own reason and still fit (AuditLogs.Reason, 1000). Cut by
+        // SafeText — a plain slice could end in half an emoji, which Npgsql refuses to write.
+        var note = SafeText.Truncate(reason, 200);
 
         var existing = await _db.AbsenceMarks
             .FirstOrDefaultAsync(a => a.EmployeeId == request.EmployeeId && a.Date == request.Date, ct);

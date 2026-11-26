@@ -1,3 +1,4 @@
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -188,5 +189,5 @@ public static class SelfCorrection
     public static string Times(DateTime? checkIn, DateTime? checkOut) =>
         $"{(checkIn is null ? "—" : checkIn.Value.ToString("HH:mm"))}–{(checkOut is null ? "—" : checkOut.Value.ToString("HH:mm"))} UTC";
 
-    private static string Cap(string text) => text.Length <= 1000 ? text : text[..1000];
+    private static string Cap(string text) => SafeText.Truncate(text, 1000);
 }

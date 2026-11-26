@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -69,7 +70,7 @@ public class TasksController : ControllerBase
         if (!CanAccess) return Forbidden();
         var title = request.Title?.Trim() ?? string.Empty;
         if (title.Length == 0) return BadRequest(new { error = "EmptyTitle" });
-        if (title.Length > 500) title = title[..500];
+        title = SafeText.Truncate(title, 500);
 
         var ct = HttpContext.RequestAborted;
         var me = User.EmployeeId();
@@ -116,7 +117,7 @@ public class TasksController : ControllerBase
         if (!CanAccess) return Forbidden();
         var title = request.Title?.Trim() ?? string.Empty;
         if (title.Length == 0) return BadRequest(new { error = "EmptyTitle" });
-        if (title.Length > 500) title = title[..500];
+        title = SafeText.Truncate(title, 500);
         var ct = HttpContext.RequestAborted;
         var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (task is null) return NotFound(new { error = "NotFound" });

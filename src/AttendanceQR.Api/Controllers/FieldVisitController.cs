@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -711,7 +712,7 @@ public class FieldVisitController : ControllerBase
         visit.ReviewedAtUtc = DateTime.UtcNow;
         visit.ReviewedByEmployeeId = Me;
         var note = request.Note?.Trim();
-        visit.ReviewNote = string.IsNullOrEmpty(note) ? null : note[..Math.Min(note.Length, 500)];
+        visit.ReviewNote = string.IsNullOrEmpty(note) ? null : SafeText.Truncate(note, 500);
 
         await _db.SaveChangesAsync(ct);
 
@@ -983,7 +984,7 @@ public class FieldVisitController : ControllerBase
         (raw ?? Array.Empty<string>())
             .Select(s => (s ?? string.Empty).Trim())
             .Where(s => s.Length > 0)
-            .Select(s => s.Length > MaxChecklistLabel ? s[..MaxChecklistLabel] : s)
+            .Select(s => SafeText.Truncate(s, MaxChecklistLabel))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(MaxChecklistItems)
             .ToList();
