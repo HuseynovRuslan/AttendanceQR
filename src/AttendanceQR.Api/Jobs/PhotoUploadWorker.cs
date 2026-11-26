@@ -142,7 +142,8 @@ public sealed class PhotoUploadWorker : BackgroundService
         }
     }
 
-    private async Task ProcessAsync(Guid tenantId, Guid pendingId, CancellationToken ct)
+    // Internal only so a test can run one row through it; nothing else may call it.
+    internal async Task ProcessAsync(Guid tenantId, Guid pendingId, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         scope.ServiceProvider.GetRequiredService<ITenantContext>().Resolve(tenantId);
@@ -179,10 +180,23 @@ public sealed class PhotoUploadWorker : BackgroundService
             record.CheckInPhotoTakenAtUtc = nowUtc;
             // A QR-less check-in has already looked at this photo (CompareFaceNowAsync): a frame with
             // no face, or with a crowd in it, must not become the face everything after is judged by.
-            if (!hadReference && !FaceVerdicts.UnfitAsReference(record.FaceMatchStatus))
+            //
+            // The verdict is read again HERE, right before promoting — not taken from the record loaded
+            // above. The request writes it while this runs, and the copy loaded milliseconds after the
+            // scan nearly always predated it: the guard compared NotChecked and seeded the reference from
+            // the ceiling anyway. (The request now also holds such a photo back until its check is done;
+            // this covers the poller and the retries, which can still pick a row up mid-check.)
+            if (!hadReference)
             {
-                employee.ReferencePhotoKey = await storage.UploadReferencePhotoAsync(employee.Id, pending.Bytes, ct);
-                employee.ReferencePhotoTakenAtUtc = nowUtc;
+                var verdict = await db.AttendanceRecords.AsNoTracking()
+                    .Where(r => r.Id == record.Id)
+                    .Select(r => r.FaceMatchStatus)
+                    .FirstOrDefaultAsync(ct);
+                if (!FaceVerdicts.UnfitAsReference(verdict))
+                {
+                    employee.ReferencePhotoKey = await storage.UploadReferencePhotoAsync(employee.Id, pending.Bytes, ct);
+                    employee.ReferencePhotoTakenAtUtc = nowUtc;
+                }
             }
 
             db.PendingPhotoUploads.Remove(pending);

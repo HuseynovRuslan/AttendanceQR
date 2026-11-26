@@ -750,13 +750,13 @@ public class FieldVisitController : ControllerBase
         });
 
         visit.Status = FieldVisitStatus.Cancelled;
-        await _db.SaveChangesAsync(ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [visit.VisitDate], ct);
 
         // The day has to be re-judged without it, or the summary keeps counting a visit that is no
         // longer there. Today is refused by the job by design and needs no rebuild — today is
-        // computed live everywhere.
-        try { await _summaries.GenerateForDateAsync(visit.VisitDate, ct); }
-        catch (Exception ex) { _logger.LogError(ex, "Visit {Id} discarded, summary rebuild failed", visit.Id); }
+        // computed live everywhere. A rebuild that fails, or is abandoned, keeps its note and the
+        // worker finishes it (PlanRebuilds); it used to be logged and forgotten.
+        await PlanRebuilds.FinishAsync(_db, _summaries, [visit.VisitDate], _logger);
 
         return Ok(new { id = visit.Id, status = visit.Status.ToString(), minutes });
     }
@@ -813,7 +813,7 @@ public class FieldVisitController : ControllerBase
         visit.Status = FieldVisitStatus.Completed;
         visit.CheckOutAtUtc = leftAt;
         // No CheckOutLatitude/Longitude — the admin isn't on site; distance stays unmeasured.
-        await _db.SaveChangesAsync(ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [visit.VisitDate], ct);
 
         // Same follow-through as the worker's own check-out: this visit is being closed precisely
         // because nobody is going to pass the poster, so the open day would otherwise stay open.
@@ -825,8 +825,7 @@ public class FieldVisitController : ControllerBase
         // read from DailySummaries, not computed, so a visit fixed today would still report the
         // Qayıb the broken visit produced. Today is refused by the job by design (today is computed
         // live everywhere), which is why this is safe to call unconditionally.
-        try { await _summaries.GenerateForDateAsync(visit.VisitDate, ct); }
-        catch (Exception ex) { _logger.LogError(ex, "Field visit {Id} closed, summary rebuild failed", visit.Id); }
+        await PlanRebuilds.FinishAsync(_db, _summaries, [visit.VisitDate], _logger);
 
         return Ok(new { id = visit.Id, status = visit.Status.ToString(), closedAttendanceDay = closedDay });
     }

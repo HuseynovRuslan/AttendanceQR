@@ -115,12 +115,12 @@ public class ShiftOverridesController : ControllerBase
             existing.CreatedAtUtc = DateTime.UtcNow;
         }
 
-        await _db.SaveChangesAsync(ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [request.Date], ct);
 
         // The day is rebuilt at once, so the tabel and the hours agree with the change before anybody
-        // navigates away. GenerateForDateAsync is a no-op for today and the future by design — today
-        // is live and recomputed on read.
-        await _summaries.GenerateForDateAsync(request.Date, ct);
+        // navigates away — and to the end if they do (PlanRebuilds). GenerateForDateAsync is a no-op for
+        // today and the future by design — today is live and recomputed on read.
+        await PlanRebuilds.FinishAsync(_db, _summaries, [request.Date], null);
 
         return Ok(new { ok = true });
     }
@@ -139,8 +139,8 @@ public class ShiftOverridesController : ControllerBase
 
         var date = row.Date;
         _db.ShiftOverrides.Remove(row);
-        await _db.SaveChangesAsync(ct);
-        await _summaries.GenerateForDateAsync(date, ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [date], ct);
+        await PlanRebuilds.FinishAsync(_db, _summaries, [date], null);
 
         return Ok(new { ok = true });
     }

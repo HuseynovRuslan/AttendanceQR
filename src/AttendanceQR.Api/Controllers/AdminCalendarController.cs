@@ -72,11 +72,12 @@ public class AdminCalendarController : ControllerBase
             LocationId = request.LocationId
         };
         _db.NonWorkingDays.Add(day);
-        await _db.SaveChangesAsync();
+        await PlanRebuilds.SaveWithNotesAsync(_db, [request.Date], default);
 
         // Reflect immediately in any already-persisted summary for this date, rather than waiting
-        // for the next nightly run.
-        await _dailySummaryService.GenerateForDateAsync(request.Date, HttpContext.RequestAborted);
+        // for the next nightly run — noted with the holiday and run to the end even if the request is
+        // abandoned, since a retry would only add a second holiday (PlanRebuilds).
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [request.Date], null);
 
         return Ok(new { id = day.Id, date = day.Date, description = day.Description, locationId = day.LocationId });
     }
@@ -90,9 +91,9 @@ public class AdminCalendarController : ControllerBase
 
         var date = day.Date;
         _db.NonWorkingDays.Remove(day);
-        await _db.SaveChangesAsync();
+        await PlanRebuilds.SaveWithNotesAsync(_db, [date], default);
 
-        await _dailySummaryService.GenerateForDateAsync(date, HttpContext.RequestAborted);
+        await PlanRebuilds.FinishAsync(_db, _dailySummaryService, [date], null);
 
         return Ok(new { deleted = id });
     }

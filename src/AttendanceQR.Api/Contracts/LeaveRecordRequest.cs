@@ -21,3 +21,15 @@ public record LeaveRecordRequest(
     public IReadOnlyList<Guid> Subjects =>
         EmployeeIds is { Count: > 0 } many ? many.Distinct().ToList() : [EmployeeId];
 }
+
+/// <summary>
+/// The leave note's limit. LeaveRecords.Note is varchar(500), and the in-memory test store never enforces it — so
+/// a longer note passed every test and failed only on Postgres, with a 500 that took the whole batch down. Checked
+/// by hand in both create endpoints rather than with an attribute on the record (an attribute on a positional record
+/// is the trap that once failed every scan).
+/// </summary>
+public static class LeaveNote
+{
+    public const int MaxLength = 500;
+    public const string TooLong = "NoteTooLong";
+}

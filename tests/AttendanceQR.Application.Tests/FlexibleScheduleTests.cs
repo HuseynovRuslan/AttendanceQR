@@ -14,6 +14,8 @@ using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -58,22 +60,34 @@ public class FlexibleScheduleTests
         public Guid AdminId { get; } = Guid.NewGuid();
         public Guid LocationId { get; } = Guid.NewGuid();
         public Guid ScheduleId { get; } = Guid.NewGuid();
+        /// <summary>IX_AttendanceRecords_OneOpenPerDay as Postgres enforces it, when asked for (openIndex).</summary>
+        public OneOpenPerDayIndex? OpenIndex { get; }
         private readonly IQrTokenService _qr = new QrTokenService(Options.Create(new QrTokenOptions
         {
             Secret = "test-secret-key-for-flexible-schedule-tests", TtlSeconds = 300,
         }));
 
         public Harness(int? normMinutes = 480, FlexibleNormPeriod period = FlexibleNormPeriod.Day, int normMask = 62,
-            string dbName = "")
+            string dbName = "", bool openIndex = false)
         {
             var tenant = new TenantContext();
             tenant.Resolve(TenantId);
-            Db = new AppDbContext(
-                new DbContextOptionsBuilder<AppDbContext>()
-                    .UseInMemoryDatabase(dbName == "" ? $"flex-{Guid.NewGuid()}" : dbName)
-                    .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-                    .Options,
-                tenant);
+            var name = dbName == "" ? $"flex-{Guid.NewGuid()}" : dbName;
+            // Its own root only when a second context has to read the same store (the index stand-in); otherwise the
+            // default, so two harnesses given one dbName still share it.
+            var root = openIndex ? new InMemoryDatabaseRoot() : null;
+            DbContextOptions<AppDbContext> Store(IInterceptor? interceptor = null)
+            {
+                var builder = new DbContextOptionsBuilder<AppDbContext>();
+                if (root is null) builder.UseInMemoryDatabase(name);
+                else builder.UseInMemoryDatabase(name, root);
+                builder.ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+                if (interceptor is not null) builder.AddInterceptors(interceptor);
+                return builder.Options;
+            }
+            if (openIndex)
+                OpenIndex = new OneOpenPerDayIndex(() => new AppDbContext(Store(), tenant));
+            Db = new AppDbContext(Store(OpenIndex), tenant);
             Db.Tenants.Add(new Tenant { Id = TenantId, Name = "T", Slug = "t", DisplayName = "T", IsActive = true });
             Db.Locations.Add(new Location
             {
@@ -498,6 +512,61 @@ public class FlexibleScheduleTests
         Assert.Equal(40, day.LateMinutes);
     }
 
+    // ─── a session voided while still open ──────────────────────────────────────────────────────────
+
+    private static AdminAttendanceController Admin(Harness h) =>
+        h.As(new AdminAttendanceController(h.Db, new StubSummary(), new StubQueue(), new StubPhoto(),
+            NullLogger<AdminAttendanceController>.Instance, new AppOptions { TimeZone = "Asia/Baku" }));
+
+    [Fact]
+    public async Task A_session_voided_while_still_open_does_not_block_the_next_arrival_that_day()
+    {
+        // Postgres's one-open-row-per-day index, voided rows included, stood in for the in-memory store.
+        using var h = new Harness(openIndex: true);
+        Assert.Null(Error(await h.ScanAt(Utc(Mon, 9))));
+        var voidedId = Assert.Single(h.Sessions()).Id;
+
+        // An admin voids it from the live board, while it is still open.
+        Assert.IsType<OkObjectResult>(await Admin(h).VoidFraud(
+            voidedId, new VoidFraudRequest("Saxta şəkil", NotifyEmployee: false), new StubPush()));
+
+        // The genuine arrival. It used to be refused with DuplicateCheckIn, and so was every scan after it that day.
+        var arrival = await h.ScanAt(Utc(Mon, 10));
+        Assert.Null(Error(arrival));
+        Assert.Equal("CheckIn", Field(arrival, "action"));
+        Assert.True(h.OpenIndex!.Refusals > 0, "the index stand-in was never hit, so this test would prove nothing");
+
+        var sessions = h.Sessions();
+        Assert.Equal(2, sessions.Count);
+        var voided = sessions.Single(s => s.Id == voidedId);
+        Assert.NotNull(voided.VoidedAtUtc);
+        Assert.Equal(Utc(Mon, 10), voided.CheckOutAtUtc);          // ended where the next one began
+        Assert.Null(sessions.Single(s => s.Id != voidedId).CheckOutAtUtc);
+        Assert.Contains(h.Db.AuditLogs.AsNoTracking().Where(a => a.EmployeeId == h.EmployeeId).AsEnumerable(),
+            a => a.Reason == $"VoidedSessionClosed|{voidedId}");
+
+        // The check-out stamped on the voided session pays nothing: the day is the genuine session alone.
+        Assert.Equal("CheckOut", Field(await h.ScanAt(Utc(Mon, 18)), "action"));
+        Assert.Equal(8 * 60, (await h.SummaryAsync(Mon))!.WorkedMinutes);
+    }
+
+    [Fact]
+    public async Task A_fixed_colleagues_voided_open_check_in_is_still_closed_by_their_own_exit()
+    {
+        // The void itself stamps no check-out, so the fixed-shift scan keeps doing what it did: the evening exit closes
+        // the voided row with the real time, which is what an un-void restores.
+        using var h = new Harness(openIndex: true);
+        Assert.Null(Error(await h.ScanAt(Utc(Mon, 9), h.FixedId)));
+        var id = Assert.Single(h.Sessions(h.FixedId)).Id;
+        Assert.IsType<OkObjectResult>(await Admin(h).VoidFraud(
+            id, new VoidFraudRequest("Saxta şəkil", NotifyEmployee: false), new StubPush()));
+        Assert.Null(h.Db.AttendanceRecords.AsNoTracking().Single(r => r.Id == id).CheckOutAtUtc);
+
+        Assert.Equal("CheckOut", Field(await h.ScanAt(Utc(Mon, 18), h.FixedId), "action"));
+        Assert.Equal(Utc(Mon, 18), Assert.Single(h.Sessions(h.FixedId)).CheckOutAtUtc);
+        Assert.Equal(0, h.OpenIndex!.Refusals);
+    }
+
     // ─── a day nobody came ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -833,6 +902,12 @@ public class FlexibleScheduleTests
     {
         public void Enqueue(Guid tenantId, Guid recordId) { }
         public ChannelReader<FaceMatchJob> Reader => Channel.CreateUnbounded<FaceMatchJob>().Reader;
+    }
+
+    private sealed class StubPush : IPushNotifier
+    {
+        public Task<int> NotifyEmployeesAsync(IReadOnlyCollection<Guid> employeeIds, string title, string body, string? url,
+            CancellationToken ct = default) => Task.FromResult(0);
     }
 
     private sealed class StubFace : IFaceMatchService

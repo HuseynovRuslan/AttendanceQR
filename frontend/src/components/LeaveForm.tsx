@@ -37,6 +37,12 @@ export interface LeavePerson {
   locationName?: string | null
 }
 
+/**
+ * The note's limit — LeaveRecords.Note holds 500 characters, and the server answers «NoteTooLong» past it. One
+ * note goes onto every row of the batch, so a pasted doctor's note used to fail the whole crew's save.
+ */
+export const LEAVE_NOTE_MAX = 500
+
 export interface LeaveSubmitResult {
   created: { employeeId: string; fullName: string }[]
   skipped: { employeeId: string; fullName: string; reason: string; conflictType?: string; conflictFrom?: string; conflictTo?: string }[]
@@ -97,6 +103,10 @@ export function LeaveForm({
     setResult(null)
     if (picked.length === 0) {
       setError('Ən azı bir işçi seçin')
+      return
+    }
+    if (note.trim().length > LEAVE_NOTE_MAX) {
+      setError(`Qeyd ən çox ${LEAVE_NOTE_MAX} hərf ola bilər.`)
       return
     }
     const res = await onSubmit({ employeeIds: picked, fromDate, toDate, type, note })
@@ -270,7 +280,10 @@ export function LeaveForm({
       {showNote ? (
         <div style={{ marginBottom: 12 }}>
           <label className="form-label">Qeyd</label>
-          <input className="inp" value={note} onChange={(e) => setNote(e.target.value)} placeholder="məs. Ailə vəziyyəti" />
+          <input
+            className="inp" value={note} maxLength={LEAVE_NOTE_MAX}
+            onChange={(e) => setNote(e.target.value)} placeholder="məs. Ailə vəziyyəti"
+          />
         </div>
       ) : (
         <button

@@ -133,11 +133,12 @@ public class AbsenceMarksController : ControllerBase
 
         _db.AuditLogs.Add(CorrectionReason.Audit(request.EmployeeId, User.EmployeeId(),
             HttpContext.Connection.RemoteIpAddress?.ToString(), $"Qayıb qoyuldu {request.Date:yyyy-MM-dd}", reason));
-        await _db.SaveChangesAsync(ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [request.Date], ct);
 
         // Rebuild the day so the tabel and the reports agree at once. A no-op for today by design —
-        // today is computed live everywhere, and the board already reads the mark.
-        await _summaries.GenerateForDateAsync(request.Date, ct);
+        // today is computed live everywhere, and the board already reads the mark. Noted with the mark and
+        // run to the end even if the request is abandoned (PlanRebuilds).
+        await PlanRebuilds.FinishAsync(_db, _summaries, [request.Date], null);
 
         return Ok(new { ok = true });
     }
@@ -168,8 +169,8 @@ public class AbsenceMarksController : ControllerBase
         _db.AuditLogs.Add(CorrectionReason.Audit(employeeId, User.EmployeeId(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             $"Qayıb götürüldü {date:yyyy-MM-dd} (qoyulanda: {row.Note ?? "—"})", reason));
-        await _db.SaveChangesAsync(ct);
-        await _summaries.GenerateForDateAsync(date, ct);
+        await PlanRebuilds.SaveWithNotesAsync(_db, [date], ct);
+        await PlanRebuilds.FinishAsync(_db, _summaries, [date], null);
 
         return Ok(new { ok = true });
     }
