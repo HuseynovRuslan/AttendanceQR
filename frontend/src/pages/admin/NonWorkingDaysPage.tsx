@@ -3,6 +3,11 @@ import { addNonWorkingDay, deleteNonWorkingDay, getNonWorkingDays, type NonWorki
 import { getAdminLocations, type AdminLocation } from '../../api/admin'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
 import { fmtDate } from '../../lib/format'
+import { limitErrorText } from '../../lib/limitErrors'
+
+/** NonWorkingDays.Description is varchar(200) (NonWorkingDayConfiguration). The server says the same with the
+ *  limit if this is ever out of step, and the field stops the admin before they get that far. */
+const DESCRIPTION_MAX = 200
 
 const ERRORS: Record<string, string> = {
   DescriptionRequired: 'Təsvir tələb olunur',
@@ -45,7 +50,7 @@ export function NonWorkingDaysPage() {
       setLocationId('')
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
-      setError(ERRORS[(data as { error: string }).error] ?? 'Yadda saxlanmadı')
+      setError(limitErrorText(data, { description: 'Təsvir' }) ?? ERRORS[(data as { error: string }).error] ?? 'Yadda saxlanmadı')
     } else {
       setError('Yadda saxlanmadı')
     }
@@ -109,6 +114,7 @@ export function NonWorkingDaysPage() {
             className="inp"
             required
             value={description}
+            maxLength={DESCRIPTION_MAX}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="məs. Novruz bayramı"
           />

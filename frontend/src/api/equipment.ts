@@ -40,6 +40,12 @@ export interface ImportResult {
   linked: number
   /** Names the file carries that the staff list does not have — the register's usual staleness. */
   unmatched: string[]
+  /**
+   * Lines left out because a cell is longer than its column: the line stays as the register already had it and the
+   * rest of the file goes in. `field` is the column in camelCase («equipment»), `max` its limit; a long name is cut
+   * for the report. Optional so an answer from a server without it reads as «none».
+   */
+  tooLong?: { rowNo: number; fullName: string; field: string; max: number }[]
 }
 
 export function getEquipment(q?: string) {

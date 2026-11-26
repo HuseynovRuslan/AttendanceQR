@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -40,12 +41,19 @@ public partial class SuperAdminController
         var plan = string.IsNullOrWhiteSpace(request.Plan) ? null : request.Plan.Trim();
         if (plan is not null && !KnownPlans.Contains(plan))
             return BadRequest(new { error = "PlanInvalid" });
+        // numeric(10,2), as the invoice amount: a price with nine digits before the point is a typo. Refused before
+        // anything on the (tracked) tenant is touched, so nothing of the plan change is half-applied.
+        if (request.MonthlyPriceOverride is decimal typed and >= 0m
+            && FieldLimits.Check<Tenant>(_db, nameof(Tenant.MonthlyPriceOverride), typed) is { } tooLarge)
+            return BadRequest(FieldLimitErrors.Body(tooLarge));
 
         tenant.Plan = plan;
         tenant.MaxEmployees = request.MaxEmployees is int me and > 0 ? me : null;
         tenant.MaxLocations = request.MaxLocations is int ml and > 0 ? ml : null;
         // >= 0 sets it (0 = a comped/free tenant); null or negative clears → billing uses the formula.
-        tenant.MonthlyPriceOverride = request.MonthlyPriceOverride is decimal p and >= 0m ? p : null;
+        tenant.MonthlyPriceOverride = request.MonthlyPriceOverride is decimal p and >= 0m
+            ? FieldLimits.RoundToColumn<Tenant>(_db, nameof(Tenant.MonthlyPriceOverride), p)
+            : null;
         tenant.DisabledFeatures = TenantFeatures.ToCsv(request.DisabledFeatures ?? Array.Empty<string>());
         // Extending or ending a demo is the same field, so "give them two more weeks" and "they are
         // paying now" are one control rather than two. A date in the past reads as an ended demo.
