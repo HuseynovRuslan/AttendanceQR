@@ -18,6 +18,7 @@ import {
 import { IconCheck, IconMapPin, IconQr, IconTrash, IconX } from '../../components/icons'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
 import { listFailureText } from '../../lib/listFailure'
+import { locationInUseText, type LocationInUse } from '../../lib/deleteRefusal'
 import { shiftParenLabel } from '../../lib/shiftLabel'
 
 type FormState = {
@@ -67,18 +68,6 @@ const ERRORS: Record<string, string> = {
   LocationNotFound: 'Filial tapılmadı',
   WorkDaysMaskInvalid: 'İş günləri seçimi yanlışdır',
   FaceMatchDisabled: 'Üz tanıma bu serverdə söndürülüb — QR-siz giriş açıla bilməz (selfi yeganə lövbərdir)',
-}
-
-/** Why this branch will not delete, and what to do about it — the two causes have different answers.
- *  Staff can be moved and the branch then deletes; history cannot, so that branch is deactivated
- *  instead. Saying only "it is in use" left an admin hunting for staff they could not see. */
-function inUseMessage(name: string, employees: number, history: number): string {
-  if (history > 0) {
-    return `«${name}» filialında ${history} davamiyyət qeydi var — silinsə tarixçə itərdi. ` +
-      'Əvəzinə «Dayandır» ilə deaktiv edin: kiosk QR bağlanır, məlumat qalır.'
-  }
-  return `«${name}» filialında ${employees} işçi var. Əvvəlcə onları başqa filiala köçürün ` +
-    '(İşçilər → redaktə → Filial), sonra silin. Özünüz də o filialda ola bilərsiniz.'
 }
 
 export function LocationsPage() {
@@ -277,8 +266,8 @@ export function LocationsPage() {
       if (editingId === l.id) closeForm()
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
-      const d = data as { error: string; employeeCount?: number; historyCount?: number }
-      setError(d.error === 'LocationInUse' ? inUseMessage(l.name, d.employeeCount ?? 0, d.historyCount ?? 0) : ERRORS[d.error] ?? 'Silinmədi')
+      const d = data as { error: string } & LocationInUse
+      setError(d.error === 'LocationInUse' ? locationInUseText(l.name, d) : ERRORS[d.error] ?? 'Silinmədi')
     } else {
       setError('Silinmədi')
     }
