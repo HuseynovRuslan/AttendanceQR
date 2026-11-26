@@ -1319,11 +1319,7 @@ public class AttendanceController : ControllerBase
         };
         _db.AttendanceRecords.Add(record);
 
-        try
-        {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
+        if (!await SaveCheckInAsync(record, ip))
         {
             // Concurrent check-in for the same (EmployeeId, AttendanceDate) hit the unique
             // index. Detach the failed insert so the audit write below can persist cleanly.
@@ -1382,6 +1378,60 @@ public class AttendanceController : ControllerBase
             faceMatch = faceVerdict?.ToString(),
             faceScore
         });
+    }
+
+    /// <summary>
+    /// Saves a new check-in. False when the day's one open slot (IX_AttendanceRecords_OneOpenPerDay) is taken — a
+    /// double tap, or an online scan racing its own offline replay — which the caller answers DuplicateCheckIn.
+    ///
+    /// One clash is not a duplicate: the slot held by a VOIDED session. A void stamps no check-out, so a session an
+    /// admin voided while it was still open keeps the slot, and the index knows nothing about voids. The fixed-shift
+    /// scan never gets here — it takes the day's open row, voided or not, as the one to close — but «Elastik qrafik»
+    /// rightly does not count a voided row as a session, so it opened a new one and got 23505 on every scan until
+    /// midnight: online the phone showed DuplicateCheckIn with a retry that could never work, and an offline replay was
+    /// dropped as «already recorded». The person's genuine arrival could not be recorded at all.
+    ///
+    /// So the voided session is closed at this arrival — it ended, at the latest, when the next one began — and the
+    /// insert is tried once more. That check-out adds no hours: everything that computes a day skips voided rows
+    /// (DailySummaryService, ReportQueryService.LoadDayRows), and an un-void restores a session that ends where the
+    /// next one starts. It is deliberately not closed at the void itself: the fixed-shift scan closes a voided session
+    /// with the person's real exit, and an un-void restores that day exactly; a check-out invented at the moment of the
+    /// void would have replaced it, and turned the evening scan into «AlreadyCompleted». Postgres only — the in-memory
+    /// test store has no filtered unique index, so the tests stand one in with an interceptor.
+    /// </summary>
+    private async Task<bool> SaveCheckInAsync(AttendanceRecord record, string? ip)
+    {
+        try
+        {
+            await _db.SaveChangesAsync();
+            return true;
+        }
+        catch (DbUpdateException ex)
+        {
+            if (Approvals.ChangeRequestDesk.UniqueViolation(ex)?.Contains("OneOpenPerDay") != true)
+                return false;
+            var voided = await _db.AttendanceRecords.FirstOrDefaultAsync(r =>
+                r.EmployeeId == record.EmployeeId && r.AttendanceDate == record.AttendanceDate
+                && r.CheckOutAtUtc == null && r.VoidedAtUtc != null && r.Id != record.Id);
+            if (voided is null)
+                return false;
+
+            // Never before its own check-in: an offline replay can be older than the session it replaces.
+            var arrival = record.CheckInAtUtc!.Value;
+            voided.CheckOutAtUtc = voided.CheckInAtUtc is DateTime began && began > arrival ? began : arrival;
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // Another tap took the slot in between: an ordinary duplicate after all. The voided row stays as it was.
+                _db.Entry(voided).State = EntityState.Detached;
+                return false;
+            }
+            await WriteAuditAsync(record.EmployeeId, AuditEventType.CheckInSuccess, $"VoidedSessionClosed|{voided.Id}", ip);
+            return true;
+        }
     }
 
     /// <summary>
