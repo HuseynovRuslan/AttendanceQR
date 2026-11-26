@@ -211,8 +211,33 @@ public class AdminLocationsController : ControllerBase
         var ct = HttpContext.RequestAborted;
         var employeeCount = await _db.Employees.CountAsync(e => e.LocationId == id, ct);
         var historyCount = await _db.AttendanceRecords.CountAsync(a => a.LocationId == id, ct);
-        if (employeeCount > 0 || historyCount > 0)
-            return Conflict(new { error = "LocationInUse", employeeCount, historyCount });
+        // Records of decisions about this branch, kept on purpose and never deleted: a grant a PERSON made
+        // here (revoked ones too — «who could act here on the 3rd»), an approval area, an approval request
+        // (a rejected «new employee» for this branch included). Each holds the branch with a Restrict key;
+        // they were not counted, so such a branch answered a bare 500 instead of saying what holds it.
+        // The answer for them is the one for scans: deactivate.
+        var accessCount = await _db.RoleAssignments.CountAsync(a => a.LocationId == id && a.CreatedByEmployeeId != null, ct);
+        var approvalCount = await _db.ApprovalAreas.CountAsync(a => a.LocationId == id, ct)
+                            + await _db.ChangeRequests.CountAsync(r => r.LocationId == id, ct);
+        // And anything the model holds the branch with that this action has not been taught about — named,
+        // not guessed at (DeleteRulesTests fails until someone decides).
+        var otherTables = new List<string>();
+        foreach (var reference in RowReferences.Holding(_db.Model, typeof(Location)).Where(r => !DeleteRules.Location.Contains(r.Name)))
+        {
+            if (await RowReferences.CountAsync(_db, reference, id, ct) > 0)
+                otherTables.Add(reference.Table);
+        }
+        if (employeeCount > 0 || historyCount > 0 || accessCount > 0 || approvalCount > 0 || otherTables.Count > 0)
+            return Conflict(new { error = "LocationInUse", employeeCount, historyCount, accessCount, approvalCount, otherTables });
+
+        // The SYSTEM's grants here are mirrors of «manages this branch» (AccessSeeder writes one per
+        // ManagedLocations row and only ever revokes it). ManagedLocations go with the branch by cascade,
+        // so their mirrors go with it too — otherwise every branch that was ever ticked for a manager
+        // could never be deleted, revoked mirrors being kept for ever.
+        var mirrors = await _db.RoleAssignments
+            .Where(a => a.LocationId == id && a.CreatedByEmployeeId == null)
+            .ToListAsync(ct);
+        _db.RoleAssignments.RemoveRange(mirrors);
 
         // DailySummaries used to count as history here, and that is what made empty branches
         // undeletable for months: a summary is DERIVED — the night job writes one per employee per day,
@@ -251,7 +276,21 @@ public class AdminLocationsController : ControllerBase
         }
 
         _db.Locations.Remove(location);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (DeleteRules.IsForeignKeyRefusal(ex, out var table))
+        {
+            // A row written since the counts above (somebody moved onto this branch in the moment), or one the
+            // model cannot see. One SaveChanges, so nothing moved and nothing was removed. Say what holds it.
+            _logger.LogWarning(ex, "Location {LocationId} delete refused by the database: still referenced from {Table}", id, table);
+            return Conflict(new
+            {
+                error = "LocationInUse", employeeCount = 0, historyCount = 0, accessCount = 0, approvalCount = 0,
+                otherTables = table is null ? new List<string>() : new List<string> { table },
+            });
+        }
         return Ok(new { deleted = id, summariesMoved = moved, summariesRemoved = dropped });
     }
 

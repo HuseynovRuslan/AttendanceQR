@@ -65,6 +65,7 @@ import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { StatusBadge } from '../../components/StatusBadge'
 import { listFailureText } from '../../lib/listFailure'
+import { employeeHistoryPrompt, employeeReferencedText, type EmployeeHistory, type Referenced } from '../../lib/deleteRefusal'
 import { roleOptionName } from '../../lib/roleNames'
 import { useRoleLabels } from '../../lib/useRoleLabels'
 import { FREE_MODE, shiftOptionLabel } from '../../lib/shiftLabel'
@@ -129,6 +130,16 @@ function bulkPermissionError(permission: BulkPermission, status: number, data: u
   return 'Dəyişmədi — yenidən cəhd edin'
 }
 
+/** A delete the server refused, in words: its own reason where it gave one, never a bare «Silinmədi». */
+function deleteFailureText(data: unknown): string {
+  if (data && typeof data === 'object' && 'error' in data) {
+    const d = data as { error: string } & Referenced
+    if (d.error === 'EmployeeReferenced') return employeeReferencedText(d)
+    return ERRORS[d.error] ?? 'Silinmədi'
+  }
+  return 'Silinmədi'
+}
+
 const ERRORS: Record<string, string> = {
   // A branch manager's own refusals (their endpoints, since the one staff list).
   NameRequired: 'Ad tələb olunur',
@@ -143,7 +154,7 @@ const ERRORS: Record<string, string> = {
   PhoneAlreadyExists: 'Bu telefon nömrəsi artıq mövcuddur',
   NeedEmailOrPhone: 'Telefon nömrəsi və ya email lazımdır',
   LocationNotFound: 'Filial tapılmadı',
-  EmployeeHasHistory: 'Bu işçinin davamiyyət tarixçəsi var — silmək olmaz, əvəzinə deaktiv edin',
+  EmployeeHasHistory: 'Bu işçinin tarixçəsi var — silinmədi. Hesabı bağlamaq üçün deaktiv edin',
   CannotDeleteSelf: 'Öz hesabınızı silə bilməzsiniz',
   CannotDeactivateSelf: 'Öz hesabınızı deaktiv edə bilməzsiniz — girişiniz bağlanardı',
   CannotChangeOwnRole: 'Öz rolunuzu dəyişə bilməzsiniz — panelə girişinizi itirə bilərsiniz',
@@ -874,12 +885,10 @@ export function EmployeesPage() {
     setDeletingId(e.id)
     const { status, data } = await deleteEmployee(e.id)
 
-    // Blocked because this employee has attendance/device-change history — offer to wipe that
-    // history too (common for test accounts) instead of silently failing.
+    // Blocked because this employee has history (attendance, phone-change requests) — offer to wipe that
+    // history too (common for test accounts) instead of silently failing. The question names what goes.
     if (status === 409 && data && typeof data === 'object' && 'error' in data && data.error === 'EmployeeHasHistory') {
-      const wipe = window.confirm(
-        `"${e.fullName}" işçisinin davamiyyət tarixçəsi var. Tarixçə daxil olmaqla TAM silinsin? Bu geri qaytarılmır.`,
-      )
+      const wipe = window.confirm(employeeHistoryPrompt(e.fullName, data as EmployeeHistory))
       if (wipe) {
         const forced = await deleteEmployee(e.id, true)
         setDeletingId(null)
@@ -887,7 +896,8 @@ export function EmployeesPage() {
           deselect([e.id])
           await refresh()
         } else {
-          setError('Silinmədi')
+          // The server says why now, and a refused forced delete has changed nothing — say both.
+          setError(deleteFailureText(forced.data))
         }
         return
       }
@@ -897,10 +907,8 @@ export function EmployeesPage() {
     if (status === 200) {
       deselect([e.id])
       await refresh()
-    } else if (data && typeof data === 'object' && 'error' in data) {
-      setError(ERRORS[(data as { error: string }).error] ?? 'Silinmədi')
     } else {
-      setError('Silinmədi')
+      setError(deleteFailureText(data))
     }
   }
 
