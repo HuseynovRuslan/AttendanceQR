@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -498,7 +499,7 @@ public class AdminAttendanceController : ControllerBase
             ? $"{record.AttendanceDate:dd.MM.yyyy} tarixli girişinizdə çəkilən şəkil üz "
               + "yoxlamasından keçmədi. Bu dəfə girişiniz qüvvədədir. Zəhmət olmasa növbəti "
               + "skanda üzünüz aydın görünsün — papaq və eynəyi çıxarın, işıqlı yerdə çəkin."
-            : custom.Length > 500 ? custom[..500] : custom;;
+            : SafeText.Truncate(custom, 500);
 
         _db.EmployeeNotifications.Add(new EmployeeNotification
         {
@@ -1170,7 +1171,7 @@ public class AdminAttendanceController : ControllerBase
         $"{r.CheckInAtUtc:HH:mm}–{(r.CheckOutAtUtc is null ? "—" : r.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC";
 
     /// <summary>The audit column holds 1000 characters; a long reason is cut, never refused at save time.</summary>
-    private static string Cap(string text) => text.Length <= 1000 ? text : text[..1000];
+    private static string Cap(string text) => SafeText.Truncate(text, 1000);
 
     private static object Project(AttendanceRecord r) => new
     {

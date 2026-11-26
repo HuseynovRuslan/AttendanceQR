@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Application.Common;
@@ -102,8 +103,7 @@ public class MissedCheckoutController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Reason))
             return BadRequest(new { error = "ReasonRequired" });
         var reason = request.Reason.Trim();
-        if (reason.Length > 300)
-            reason = reason[..300];
+        reason = SafeText.Truncate(reason, 300);
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(
             r => r.Id == request.RecordId && r.EmployeeId == employeeId, HttpContext.RequestAborted);

@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -424,7 +425,7 @@ public class ShiftPlanController : ControllerBase
         }
 
         var note = request.Note?.Trim();
-        note = string.IsNullOrEmpty(note) ? "Növbə planı" : note[..Math.Min(note.Length, 200)];
+        note = string.IsNullOrEmpty(note) ? "Növbə planı" : SafeText.Truncate(note, 200);
         var now = DateTime.UtcNow;
         var what = string.Join(", ", tokens.Select(t => t is null ? "öz növbəsi" : StandingShifts.DayLabel(t, catalogue).Split(' ')[0]).Distinct());
         var touchedFirst = cells.Count > 0 ? cells.Min(c => c.Date) : first;

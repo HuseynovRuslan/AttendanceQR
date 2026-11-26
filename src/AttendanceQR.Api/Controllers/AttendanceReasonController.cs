@@ -1,3 +1,4 @@
+using AttendanceQR.Domain;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,8 +36,7 @@ public class AttendanceReasonController : ControllerBase
         var reason = (body.Reason ?? string.Empty).Trim();
         if (reason.Length == 0)
             return BadRequest(new { error = "ReasonRequired" });
-        if (reason.Length > 300)
-            reason = reason[..300];
+        reason = SafeText.Truncate(reason, 300);
 
         // The global tenant query filter + EmployeeId match keep this to the caller's own record.
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(

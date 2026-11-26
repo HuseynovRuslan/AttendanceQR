@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -93,7 +94,7 @@ public class ShiftOverridesController : ControllerBase
             .FirstOrDefaultAsync(o => o.EmployeeId == request.EmployeeId && o.Date == request.Date, ct);
 
         var note = request.Note?.Trim();
-        note = string.IsNullOrEmpty(note) ? null : note[..Math.Min(note.Length, 200)];
+        note = string.IsNullOrEmpty(note) ? null : SafeText.Truncate(note, 200);
 
         if (existing is null)
         {
