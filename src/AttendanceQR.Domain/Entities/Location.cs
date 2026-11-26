@@ -120,4 +120,17 @@ public class Location : ITenantScoped
     /// vakant rather than inventing a zero. Typed by the admin on the branch form; nothing derives it.
     /// </summary>
     public int? Headcount { get; set; }
+
+    /// <summary>
+    /// «Mövcudluq yoxlaması» for the whole branch: every person checked in here is asked to confirm where they are
+    /// about once every this many hours of their day, at a random moment inside each stretch
+    /// (<c>PresenceCheckRules.PlanCadence</c>). Null = off — the per-person switch
+    /// (<see cref="Employee.PresenceCheckUntilUtc"/>) still works as before.
+    ///
+    /// A property of the PLACE, like <see cref="QrlessCheckIn"/>: a company that wants the question asked
+    /// of everyone at a site sets it once, and a new hire there inherits it. It is decided by the branch the person
+    /// checked in at that day, not by their home branch. Only <c>PresenceCheckRules.AllowedEveryHours</c>
+    /// values are accepted. It never blocks or changes anything about the day itself.
+    /// </summary>
+    public int? PresenceCheckEveryHours { get; set; }
 }

@@ -34,7 +34,11 @@ public record LocationRequest(
     // ştat minus the people actually on its list. Null = leave as it is (same trap as above),
     // 0 = clear it. Checked in TryValidate, not with an attribute (a [property: Range] on a record
     // 500s every request that binds it).
-    int? Headcount = null);
+    int? Headcount = null,
+    // «Mövcudluq yoxlaması» for everybody at the branch, every N hours (Location.PresenceCheckEveryHours).
+    // Null = leave as it is (same trap as above), 0 = off, otherwise one of PresenceCheckRules.AllowedEveryHours.
+    // Admin only; checked in TryValidate and the controller, not with an attribute.
+    int? PresenceCheckEveryHours = null);
 
 /// <summary>Enable/disable a location without deleting it.</summary>
 public record SetActiveRequest(bool IsActive);

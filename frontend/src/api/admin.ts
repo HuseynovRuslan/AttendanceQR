@@ -271,6 +271,9 @@ export interface AdminLocation {
   /** «Ştat» — places the branch is staffed for; the daily report's vacancy = ştat − people on its list.
    *  Null = not set. On save: a number sets it, 0 clears it, omitted leaves it as it is. */
   headcount?: number | null
+  /** «Mövcudluq yoxlaması» for everybody checked in here, about every N hours (2, 3 or 4). Null = off.
+   *  On save: a number sets it, 0 switches it off, omitted leaves it as it is. Admin only. */
+  presenceCheckEveryHours?: number | null
 }
 
 /** Create/update payload — active state is managed separately via setLocationActive. */

@@ -45,6 +45,9 @@ export interface PresenceCheckRow {
 
 export interface PresenceCheckView {
   on: boolean
+  /** The home branch asks everybody (Location.PresenceCheckEveryHours): its name and rate, else null. */
+  branchName?: string | null
+  branchEveryHours?: number | null
   untilUtc: string | null
   setAtUtc: string | null
   setByName: string | null

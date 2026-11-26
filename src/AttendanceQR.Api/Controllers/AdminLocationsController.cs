@@ -102,6 +102,8 @@ public class AdminLocationsController : ControllerBase
             RequireGeofence = request.RequireGeofence ?? true,
             Headcount = request.Headcount is > 0 ? request.Headcount : null
         };
+        if (ApplyPresenceCadence(location, request.PresenceCheckEveryHours) is { } cadenceRefused)
+            return cadenceRefused;
         _db.Locations.Add(location);
         await _db.SaveChangesAsync();
         return Ok(Project(location));
@@ -147,6 +149,8 @@ public class AdminLocationsController : ControllerBase
         }
         if (request.Headcount is int headcount)
             location.Headcount = headcount > 0 ? headcount : null;
+        if (ApplyPresenceCadence(location, request.PresenceCheckEveryHours) is { } cadenceRefused)
+            return cadenceRefused;
         if (request.QrlessCheckIn is bool qrless && qrless != location.QrlessCheckIn)
         {
             // Loud either way: this flips how every person at the branch records their day.
@@ -399,6 +403,7 @@ public class AdminLocationsController : ControllerBase
         qrlessCheckIn = l.QrlessCheckIn,
         requireGeofence = l.RequireGeofence,
         headcount = l.Headcount,
+        presenceCheckEveryHours = l.PresenceCheckEveryHours,
         structureId = l.StructureId
     };
 
@@ -416,6 +421,39 @@ public class AdminLocationsController : ControllerBase
         if (!TimeOnly.TryParse(r.ShiftEnd, CultureInfo.InvariantCulture, out end)) { error = "ShiftEndInvalid"; return false; }
         if (r.WorkDaysMask is < 0 or > 127) { error = "WorkDaysMaskInvalid"; return false; }
         if (r.Headcount is < 0 or > 100_000) { error = "HeadcountInvalid"; return false; }
+        if (r.PresenceCheckEveryHours is int every && every != 0 && !PresenceCheckRules.AllowedEveryHours.Contains(every))
+        {
+            error = "PresenceIntervalInvalid";
+            return false;
+        }
         return true;
+    }
+
+    /// <summary>
+    /// Applies a requested change of the branch-wide presence cadence, if any, and writes it down. Admin only: it asks
+    /// every person at the branch, so it is a company decision, not a branch manager's. A request that does not
+    /// change it (null, or the value it already has) is no change, whoever sends it.
+    /// </summary>
+    private IActionResult? ApplyPresenceCadence(Location location, int? requested)
+    {
+        if (requested is not int value)
+            return null;
+        int? next = value == 0 ? null : value;
+        if (next == location.PresenceCheckEveryHours)
+            return null;
+        if (User.Role() != EmployeeRole.Admin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "PresenceCadenceAdminOnly" });
+
+        _logger.LogWarning("Location {LocationId} ({Name}): PresenceCheckEveryHours {From} -> {To}",
+            location.Id, location.Name, location.PresenceCheckEveryHours, next);
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = User.EmployeeId(),
+            EventType = AuditEventType.PresenceCheckSettingChanged,
+            Reason = next is int h ? $"branch {location.Name}: every {h}h" : $"branch {location.Name}: off",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        location.PresenceCheckEveryHours = next;
+        return null;
     }
 }
