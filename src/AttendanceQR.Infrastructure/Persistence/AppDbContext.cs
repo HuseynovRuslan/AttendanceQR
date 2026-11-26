@@ -309,15 +309,20 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<DailyReportDelivery>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
     }
 
+    // FieldLimits.Enforce: a value longer (or larger) than its column is refused here, as a FieldLimitException,
+    // instead of by Postgres as an anonymous 500 — and, more to the point, the in-memory test database refuses it
+    // too, which it would not on its own. See FieldLimits.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         StampTenant();
+        FieldLimits.Enforce(ChangeTracker);
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
     {
         StampTenant();
+        FieldLimits.Enforce(ChangeTracker);
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
     }
 
