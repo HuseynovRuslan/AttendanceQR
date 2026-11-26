@@ -235,8 +235,9 @@ public class AppDbContext : DbContext
         // The push endpoint is globally unique — one row per browser; re-subscribing updates that row.
         modelBuilder.Entity<PushSubscription>().HasIndex(p => p.Endpoint).IsUnique();
         modelBuilder.Entity<EmployeeNotification>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
-        // One reminder of each kind per employee per day — this index IS the dedupe, so a job that
-        // sweeps every few minutes can't send the same nudge twice.
+        // One reminder of each kind per employee per day. The sweep skips what is already on record
+        // before inserting (ReminderJob); this index is the guard for two sweeps racing, so the same
+        // nudge can never be sent twice.
         modelBuilder.Entity<EmployeeNotification>()
             .HasIndex(n => new { n.TenantId, n.EmployeeId, n.Type, n.RelatedDate }).IsUnique();
         // Date-leading index for the retention job's nightly "older than N days" delete.
@@ -309,15 +310,20 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<DailyReportDelivery>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
     }
 
+    // FieldLimits.Enforce: a value longer (or larger) than its column is refused here, as a FieldLimitException,
+    // instead of by Postgres as an anonymous 500 — and, more to the point, the in-memory test database refuses it
+    // too, which it would not on its own. See FieldLimits.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         StampTenant();
+        FieldLimits.Enforce(ChangeTracker);
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
     {
         StampTenant();
+        FieldLimits.Enforce(ChangeTracker);
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
     }
 

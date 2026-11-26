@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getBilling, markBilling, type BillingResponse, type BillingRow } from '../../api/admin'
 import { ConsoleToolbar, EmptyState, TableSkeleton, TenantAvatar, matches, useTableSort } from './console'
-import { parseMoney, formatMoney as money } from '../../lib/money'
+import { parseMoney, formatMoney as money, MONEY_MAX } from '../../lib/money'
+import { limitErrorText } from '../../lib/limitErrors'
 import { useCan } from './OperatorContext'
 
 const MONTHS_AZ = [
@@ -74,11 +75,11 @@ export function BillingPage() {
       if (input === null) return
       // parseMoney rejects empty (would otherwise be 0 → "paid for 0 ₼"), NaN and ambiguous "1.250".
       const amt = parseMoney(input)
-      if (amt === null) { setError('Məbləğ yanlışdır — məs. 1250 və ya 1250.50'); return }
+      if (amt === null) { setError(`Məbləğ yanlışdır — məs. 1250 və ya 1250.50 (ən çox ${money(MONEY_MAX)})`); return }
       setBusyId(r.tenantId); setError(null)
-      const { status } = await markBilling(r.tenantId, { year, month, isPaid: true, amount: amt })
+      const { status, data } = await markBilling(r.tenantId, { year, month, isPaid: true, amount: amt })
       setBusyId(null)
-      if (status === 200) await load(); else setError('Alınmadı')
+      if (status === 200) await load(); else setError(limitErrorText(data, { amount: 'Məbləğ' }) ?? 'Alınmadı')
     } else {
       if (!window.confirm(`«${r.displayName}» — ödəniş qeydini geri alaq?`)) return
       setBusyId(r.tenantId); setError(null)

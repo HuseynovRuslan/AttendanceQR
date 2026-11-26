@@ -543,10 +543,11 @@ public class AdminController : ControllerBase
     /// Resolves one row's branch and role: the row's own if it names them, otherwise the batch's.
     /// A spreadsheet carries a branch NAME, so it is matched against this tenant's branches — case
     /// and surrounding space are the typist's business, not theirs to get exactly right. A name that
-    /// matches nothing fails that row alone rather than silently landing the person somewhere else.
+    /// matches nothing fails that row alone rather than silently landing the person somewhere else,
+    /// and so does a name that matches more than one branch (see <see cref="BranchesByName"/>).
     /// </summary>
     private static (Guid LocationId, EmployeeRole Role, string? Error) ResolveRowScope(
-        BulkInviteRow row, Guid batchLocationId, EmployeeRole batchRole, Dictionary<string, Guid> locationsByName,
+        BulkInviteRow row, Guid batchLocationId, EmployeeRole batchRole, Dictionary<string, Guid?> locationsByName,
         bool impersonating)
     {
         var locationId = batchLocationId;
@@ -554,7 +555,9 @@ public class AdminController : ControllerBase
         {
             if (!locationsByName.TryGetValue(row.LocationName.Trim(), out var found))
                 return (default, default, "LocationNotFound");
-            locationId = found;
+            if (found is not Guid only)
+                return (default, default, "LocationAmbiguous");
+            locationId = only;
         }
 
         var role = batchRole;
@@ -585,10 +588,35 @@ public class AdminController : ControllerBase
         _ => null,
     };
 
-    private async Task<Dictionary<string, Guid>> LocationsByNameAsync(CancellationToken ct) =>
-        (await _db.Locations.Select(l => new { l.Id, l.Name }).ToListAsync(ct))
-        .GroupBy(l => l.Name.Trim(), StringComparer.OrdinalIgnoreCase)
-        .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+    private async Task<Dictionary<string, Guid?>> LocationsByNameAsync(CancellationToken ct) =>
+        BranchesByName((await _db.Locations.Select(l => new { l.Id, l.Name, l.IsActive }).ToListAsync(ct))
+            .Select(l => (l.Id, l.Name, l.IsActive)));
+
+    /// <summary>
+    /// Each branch name a spreadsheet may carry → the one branch it means, or null when it means more than one.
+    ///
+    /// Nothing stops a company from having two branches of the same name — most often a deactivated one and the
+    /// new one that replaced it, since deactivating is what we tell admins to do instead of deleting. This used to
+    /// take the first of the matches in whatever order the database returned them, which is no order: the import
+    /// filed new staff under the closed branch on one day and the open one on another, and said nothing either way.
+    ///
+    /// So: an active branch wins over a deactivated one, because nobody imports people into a closed branch on
+    /// purpose. A name that leaves more than one candidate after that is refused, never guessed — the row fails
+    /// as LocationAmbiguous and the admin decides. A deactivated branch is still found when it is the only one of
+    /// that name: naming it is then a deliberate choice, and the template's list offers it. The answer does not
+    /// depend on the order the rows arrive in, because a tie is never broken.
+    /// </summary>
+    internal static Dictionary<string, Guid?> BranchesByName(IEnumerable<(Guid Id, string Name, bool IsActive)> branches) =>
+        branches
+            .GroupBy(b => b.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var preferred = g.Any(b => b.IsActive) ? g.Where(b => b.IsActive).ToList() : g.ToList();
+                    return preferred.Count == 1 ? preferred[0].Id : (Guid?)null;
+                },
+                StringComparer.OrdinalIgnoreCase);
 
     // POST /api/admin/employees/bulk-invite — add many employees at once (one shared location + role).
     // Each row is validated on its own: a duplicate phone or missing name is reported back in `failed`
@@ -1410,14 +1438,43 @@ public class AdminController : ControllerBase
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
 
-        // Attendance/summary/device-change FKs are Restrict — refuse to delete an employee with
-        // history (it would fail at the DB anyway) unless the caller explicitly opts into a
-        // force delete (e.g. wiping a test account), which purges that history first.
-        var hasHistory = await _db.AttendanceRecords.AnyAsync(a => a.EmployeeId == id)
-                         || await _db.DailySummaries.AnyAsync(d => d.EmployeeId == id)
-                         || await _db.DeviceChangeRequests.AnyAsync(r => r.EmployeeId == id || r.ReviewedByEmployeeId == id);
+        // Every row that names this person and that the database will not clean up by itself — read from
+        // the model (RowReferences), so a table added next year is found without anyone remembering this
+        // action. It used to be a hand-written list of three; role assignments and PIN-reset requests came
+        // later, and every delete of a former manager or of anyone who had pressed «PIN-i unutdum» was an
+        // unhandled 500 — and, when forced, a 500 AFTER the person's attendance had already been wiped.
+        var holding = new List<(RowReferences.Reference Reference, DeleteRules.Rule? Rule, int Count)>();
+        foreach (var reference in RowReferences.Holding(_db.Model, typeof(Employee)))
+        {
+            var count = await RowReferences.CountAsync(_db, reference, id);
+            if (count > 0)
+                holding.Add((reference, DeleteRules.Employee.GetValueOrDefault(reference.Name), count));
+        }
+
+        // A reference nobody has decided about is not guessed at — before anything is touched, and before the
+        // admin is asked to confirm a wipe that would then be refused anyway.
+        var undecided = holding.Where(h => h.Rule is null).Select(h => h.Reference.Table).Distinct().ToList();
+        if (undecided.Count > 0)
+        {
+            _logger.LogError("Employee {EmployeeId} is held by {Tables}, which DeleteRules.Employee does not cover", id, undecided);
+            return Conflict(new { error = "EmployeeReferenced", tables = undecided });
+        }
+
+        // Some of it is history somebody may still ask about (DeleteRules says which) — refuse unless the
+        // caller explicitly opts into a force delete (e.g. wiping a test account). Say what the history is:
+        // «davamiyyət» alone was wrong about an admin whose only past was a phone change they approved.
+        // Role rows and PIN-reset requests are not history: they go with the person, no question asked.
+        var hasHistory = holding.Any(h => h.Rule!.History is not null);
         if (hasHistory && !force)
-            return Conflict(new { error = "EmployeeHasHistory" });
+        {
+            int Of(DeleteRules.Kind kind) => holding.Where(h => h.Rule!.History == kind).Sum(h => h.Count);
+            return Conflict(new
+            {
+                error = "EmployeeHasHistory",
+                attendance = Of(DeleteRules.Kind.Attendance),
+                requests = Of(DeleteRules.Kind.Requests),
+            });
+        }
 
         // Every photo of this person, collected BEFORE the rows that name them are deleted — after
         // that the keys are unrecoverable and the objects are orphans nobody can find, let alone
@@ -1456,21 +1513,31 @@ public class AdminController : ControllerBase
             visit.WorkPhotoKey = null;
         }
 
-        if (hasHistory)
-        {
-            await _db.AttendanceRecords.Where(a => a.EmployeeId == id).ExecuteDeleteAsync();
-            await _db.DailySummaries.Where(d => d.EmployeeId == id).ExecuteDeleteAsync();
-            // Own requests are this employee's history — remove them. Requests they merely
-            // reviewed belong to someone else's history — keep the request, just anonymize
-            // the reviewer (mirrors the AuditLogs SetNull behavior on employee delete).
-            await _db.DeviceChangeRequests.Where(r => r.EmployeeId == id).ExecuteDeleteAsync();
-            await _db.DeviceChangeRequests.Where(r => r.ReviewedByEmployeeId == id)
-                .ExecuteUpdateAsync(s => s.SetProperty(r => r.ReviewedByEmployeeId, (Guid?)null));
-        }
+        // Their own rows go with them; rows they merely reviewed or resolved belong to someone else — kept,
+        // with the name cleared (as the database does for AuditLogs). Removals first, so a request they
+        // reviewed themselves simply goes.
+        //
+        // Tracked, not ExecuteDelete: these used to be bulk statements, each committing on its own before the
+        // person's own DELETE ran — so when that DELETE was refused, the history was already gone for good and
+        // the person was still there. Now everything is one SaveChanges, one transaction: all of it or none.
+        foreach (var (reference, _, _) in holding.Where(h => h.Rule!.Action == DeleteRules.Action.Remove))
+            await RowReferences.RemoveAsync(_db, reference, id);
+        foreach (var (reference, _, _) in holding.Where(h => h.Rule!.Action == DeleteRules.Action.Detach))
+            await RowReferences.DetachAsync(_db, reference, id);
 
-        // DeviceBinding and ManagedLocations cascade; AuditLogs are set null.
+        // DeviceBinding, ManagedLocations, LeaveRecords and PresenceChecks cascade; AuditLogs are set null.
         _db.Employees.Remove(employee);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (DeleteRules.IsForeignKeyRefusal(ex, out var table))
+        {
+            // Something the model does not see, or a row written in the moment since the count. Nothing has
+            // changed — the transaction rolled back — and no photo has been touched yet. Say what holds them.
+            _logger.LogError(ex, "Employee {EmployeeId} delete refused by the database: still referenced from {Table}", id, table);
+            return Conflict(new { error = "EmployeeReferenced", tables = table is null ? Array.Empty<string>() : new[] { table } });
+        }
 
         // After the database, never before: object storage has no transaction to join, so a purge
         // that ran first would delete a living employee's face if the delete below then failed.

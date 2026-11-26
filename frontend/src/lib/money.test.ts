@@ -26,6 +26,12 @@ describe('parseMoney', () => {
     expect(parseMoney('abc')).toBeNull()
     expect(parseMoney('-5')).toBeNull()
   })
+
+  it('rejects more than numeric(10,2) holds, which the server would refuse anyway', () => {
+    expect(parseMoney('99999999.99')).toBe(99999999.99)
+    expect(parseMoney('100000000')).toBeNull()
+    expect(parseMoney('1234567890')).toBeNull() // a pasted VÖEN in the amount box
+  })
 })
 
 describe('moneyInputFilter', () => {

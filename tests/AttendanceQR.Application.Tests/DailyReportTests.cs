@@ -266,6 +266,84 @@ public class DailyReportTests
         Assert.Equal(2, d.Attempts);
     }
 
+    // ───────────────────────────── one send, one sender ─────────────────────────────
+    //
+    // Nothing used to claim a delivery before sending it: «Hesabatı indi göndər» committed a Pending, due row and
+    // then spent seconds rendering and uploading, and a job tick in those seconds sent the same row again —
+    // two PDFs, and a dead link in one of them. The in-memory store runs one step at a time, so the overlap is
+    // staged: the other sender runs from inside the first one's Telegram call. On Postgres the job's claim is a
+    // conditional UPDATE; the race between two such UPDATEs is the database's to settle and is not reproduced here.
+
+    [Fact]
+    public async Task A_report_sent_now_is_not_sent_again_by_a_job_tick_in_the_middle_of_it()
+    {
+        using var w = new World();
+        w.AddRecipient("Direktor", chatId: 111);
+        w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
+        var tick = -1;
+        w.Telegram.WhileSending = async () => tick = await w.OtherService().ProcessDueAsync(default);
+
+        var outcome = Assert.Single(await w.Service().SendNowAsync(null, null, default));
+
+        Assert.True(outcome.Sent);
+        Assert.Equal(0, tick);
+        var sent = Assert.Single(w.Telegram.Documents);
+        // The one link that went out is the one that opens.
+        var token = sent.ButtonUrl.Split('/').Last();
+        Assert.Equal(DailyReportService.OpenResult.Ok, (await w.Service().OpenAsync(token, default)).Result);
+    }
+
+    [Fact]
+    public async Task Two_job_loops_at_once_send_each_report_once()
+    {
+        using var w = new World();
+        w.AddRecipient("Direktor", chatId: 111, at: new TimeOnly(19, 15));
+        w.AddRecipient("Struktur rəhbəri", chatId: 222, at: new TimeOnly(19, 15));
+        w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
+        Assert.Equal(2, await w.Service().CreateScheduledAsync(default));
+
+        // The first loop has loaded both rows; while it sends the first, a second loop runs a whole tick.
+        var second = -1;
+        w.Telegram.WhileSending = async () => second = await w.OtherService().ProcessDueAsync(default);
+        var first = await w.Service().ProcessDueAsync(default);
+
+        Assert.Equal(2, first + second);
+        Assert.Equal([111L, 222L], w.Telegram.Documents.Select(d => d.ChatId).Order().ToList());
+        Assert.All(w.Db.DailyReportDeliveries.AsNoTracking().ToList(), d =>
+        {
+            Assert.Equal((int)DeliveryStatus.Sent, d.Status);
+            Assert.Equal(1, d.Attempts);
+        });
+        // Every link that went out opens: no second attempt replaced its secret.
+        foreach (var doc in w.Telegram.Documents)
+            Assert.Equal(DailyReportService.OpenResult.Ok, (await w.Service().OpenAsync(doc.ButtonUrl.Split('/').Last(), default)).Result);
+    }
+
+    [Fact]
+    public async Task A_send_cut_off_halfway_is_picked_up_by_the_job_once_its_hold_runs_out()
+    {
+        using var w = new World();
+        w.AddRecipient("Direktor", chatId: 111);
+        var start = Day.ToDateTime(new TimeOnly(19, 30));
+        w.Clock.Local = start;
+        // The process stops in the middle of the upload (a restart, a deploy).
+        using var stop = new CancellationTokenSource();
+        w.Telegram.WhileSending = () =>
+        {
+            stop.Cancel();
+            stop.Token.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => w.Service().SendNowAsync(null, null, stop.Token));
+        Assert.Empty(w.Telegram.Documents);
+
+        w.Clock.Local = start.AddMinutes(5);
+        Assert.Equal(0, await w.OtherService().ProcessDueAsync(default));     // still held by the cut-off send
+        w.Clock.Local = start + DailyReportService.SendLease;
+        Assert.Equal(1, await w.OtherService().ProcessDueAsync(default));
+        Assert.Single(w.Telegram.Documents);
+    }
+
     // ───────────────────────────── the link ─────────────────────────────
 
     [Fact]
@@ -503,6 +581,14 @@ public class DailyReportTests
 
         public DailyReportService Service() => Service(Db, _tenant);
 
+        /// <summary>The service on a context of its own — another request, or another job tick's scope.</summary>
+        public DailyReportService OtherService()
+        {
+            var db = NewDb(_tenant);
+            _extra.Add(db);
+            return Service(db, _tenant);
+        }
+
         private DailyReportService Service(AppDbContext db, ITenantContext tenant) =>
             new(db, FakeBoard.For(LocationId), Telegram, new FakePdf(), _options, new AppOptions { TimeZone = "Asia/Baku" },
                 tenant, NullLogger<DailyReportService>.Instance, Clock);
@@ -594,12 +680,19 @@ public class DailyReportTests
     {
         public Queue<TelegramResult> Results { get; } = new();
         public List<SentDocument> Documents { get; } = [];
+        /// <summary>Runs once, inside the next send: whatever else happens while a report is on its way.</summary>
+        public Func<Task>? WhileSending { get; set; }
 
-        public Task<TelegramResult> SendDocumentAsync(long chatId, byte[] file, string fileName, string captionHtml,
+        public async Task<TelegramResult> SendDocumentAsync(long chatId, byte[] file, string fileName, string captionHtml,
             string buttonText, string buttonUrl, CancellationToken ct)
         {
+            if (WhileSending is { } during)
+            {
+                WhileSending = null;
+                await during();
+            }
             Documents.Add(new SentDocument(chatId, fileName, captionHtml, buttonUrl));
-            return Task.FromResult(Results.Count > 0 ? Results.Dequeue() : new TelegramResult(true));
+            return Results.Count > 0 ? Results.Dequeue() : new TelegramResult(true);
         }
 
         public Task<TelegramResult> SendMessageAsync(long chatId, string textHtml, CancellationToken ct) => Task.FromResult(new TelegramResult(true));

@@ -35,7 +35,8 @@ import {
 } from '../../api/admin'
 import { startImpersonation } from '../../api/client'
 import { COMPANY_TZ, fmtDate } from '../../lib/format'
-import { parseMoney, moneyInputFilter, formatMoney } from '../../lib/money'
+import { parseMoney, moneyInputFilter, formatMoney, MONEY_MAX } from '../../lib/money'
+import { limitErrorText } from '../../lib/limitErrors'
 import { useCan } from '../operator/OperatorContext'
 import { IconCheck, IconUsers, IconX } from '../../components/icons'
 import { displayRoleName } from '../../lib/roleNames'
@@ -454,11 +455,11 @@ export function TenantsTab() {
     let override: number | null = null
     if (raw) {
       const n = parseMoney(raw)
-      if (n === null) { setError('Fərdi qiymət yanlışdır (məs. 1250 və ya 1250.50)'); return }
+      if (n === null) { setError(`Fərdi qiymət yanlışdır (məs. 1250 və ya 1250.50, ən çox ${formatMoney(MONEY_MAX)})`); return }
       override = n
     }
     setSavingPlan(true)
-    const { status } = await setTenantPlan(planEdit.id, {
+    const { status, data } = await setTenantPlan(planEdit.id, {
       plan: planForm.plan || null,
       maxEmployees: planForm.maxEmployees ? Number(planForm.maxEmployees) : null,
       maxLocations: planForm.maxLocations ? Number(planForm.maxLocations) : null,
@@ -471,7 +472,7 @@ export function TenantsTab() {
       setPlanEdit(null)
       await refresh()
     } else {
-      setError('Plan yadda saxlanmadı')
+      setError(limitErrorText(data, { monthlyPriceOverride: 'Fərdi qiymət' }) ?? 'Plan yadda saxlanmadı')
     }
   }
 

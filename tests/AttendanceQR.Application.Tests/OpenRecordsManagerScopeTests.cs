@@ -676,6 +676,26 @@ public class OpenRecordsManagerScopeTests
     }
 
     [Fact]
+    public async Task A_Qayib_reason_with_an_emoji_on_the_cut_saves_whole_characters()
+    {
+        // The mark keeps the first 200 units of the reason. A plain slice could end on the first half of an emoji, and
+        // Npgsql's strict UTF-8 encoder refuses half a character before anything reaches Postgres: the mark and its
+        // audit line were lost as a 500 that no database log shows. The in-memory store accepts any string, so the
+        // stored note is put through the same strict encoder here.
+        using var f = new Fixture();
+        var marks = As(new AbsenceMarksController(f.Db, new StubSummary()), f.AdminId, EmployeeRole.Admin);
+        var day = Fixture.OpenDate.AddDays(-11);
+        var reason = new string('a', 199) + "👍" + " — xəbər vermədən gəlmədi";
+
+        Assert.IsType<OkObjectResult>(await marks.Mark(new AbsenceMarkRequest(f.MyWorkerId, day, reason)));
+
+        var note = f.Db.AbsenceMarks.Single().Note!;
+        Assert.Equal(new string('a', 199), note);
+        new System.Text.UTF8Encoding(false, throwOnInvalidBytes: true).GetByteCount(note);
+        Assert.EndsWith("Səbəb: " + reason, LastAudit(f));                  // the audit line keeps all of it
+    }
+
+    [Fact]
     public async Task A_missed_check_out_is_approved_or_rejected_only_with_a_reason()
     {
         using var f = new Fixture();

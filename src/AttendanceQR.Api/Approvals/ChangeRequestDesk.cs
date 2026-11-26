@@ -85,6 +85,14 @@ public sealed class ChangeRequestDesk
         if (Validate(body) is { } invalid)
             return Bad(invalid);
         var payload = Normalize(body);
+        // Two values the request BUILDS rather than takes as typed, so each part can fit and the whole not: «first
+        // last» becomes Employees.FullName, and «email:» + the address becomes DedupeKey. Checked against the columns
+        // here, while the person who asked still has the form open. Unchecked, the long e-mail was a 500 at «Göndər»,
+        // and the long name went in and then failed at every approval as «ApplyFailed», for good.
+        if (FieldLimits.Check<Employee>(_db, nameof(Employee.FullName), payload.FullName) is not null)
+            return Bad("FullNameTooLong");
+        if (FieldLimits.Check<ChangeRequest>(_db, nameof(ChangeRequest.DedupeKey), DedupeKeyOf(payload)) is not null)
+            return Bad("EmailTooLong");
         var now = Now;
 
         var scope = await ApprovalScope.LoadAsync(_db, now, ct);
@@ -421,12 +429,15 @@ public sealed class ChangeRequestDesk
         return new DeskResult(409, new { error = "ApplyRefused", reason = error });
     }
 
-    private static string ApplyErrorOf(DbUpdateException ex) => UniqueViolation(ex) switch
-    {
-        { } i when i.Contains("PhoneNumber", StringComparison.Ordinal) => "PhoneAlreadyExists",
-        { } i when i.Contains("Email", StringComparison.Ordinal) => "EmailAlreadyExists",
-        _ => "ApplyFailed",
-    };
+    private static string ApplyErrorOf(DbUpdateException ex) => ex is FieldLimitException
+        // A request made before the length checks at creation existed: it can only be rejected, so say why.
+        ? "TextTooLong"
+        : UniqueViolation(ex) switch
+        {
+            { } i when i.Contains("PhoneNumber", StringComparison.Ordinal) => "PhoneAlreadyExists",
+            { } i when i.Contains("Email", StringComparison.Ordinal) => "EmailAlreadyExists",
+            _ => "ApplyFailed",
+        };
 
     // --- read ---------------------------------------------------------------------------------------------
 

@@ -25,6 +25,8 @@ export const CORRECTION_ERROR: Record<string, string> = {
   SelfCorrectionNeedsApproval: 'Şirkətinizdə öz düzəlişi ikinci təsdiq istəyir — günü profildən düzəldin, düzəliş təsdiqə gedəcək.',
   NotAnApprover: 'Bu düzəlişi təsdiqləmək sizin hüququnuz deyil.',
   RecordChanged: 'Gün sorğudan sonra dəyişib — heç nə tətbiq olunmadı. Düzəliş yenidən istənməlidir.',
+  // Undoing a check-out while a later stretch of the same day is still open would check the person in twice.
+  AnotherBlockOpen: 'Bu gün işçinin başqa açıq girişi var — əvvəlcə o girişi bağlayın və ya silin, sonra bu çıxışı silin.',
   AlreadyReviewed: 'Bu sorğuya artıq qərar verilib.',
   NoApprover: 'İkinci təsdiq üçün təsdiq hüququ olan başqa şəxs lazımdır — «Səlahiyyətlər»də birinə «Öz düzəlişini təsdiqləmək» verin.',
 }

@@ -679,7 +679,7 @@ public class AdminAccessController : ControllerBase
     private static string? Clean(string? text, int max)
     {
         var t = text?.Trim();
-        return string.IsNullOrEmpty(t) ? null : t.Length <= max ? t : t[..max];
+        return string.IsNullOrEmpty(t) ? null : SafeText.Truncate(t, max);
     }
 
     private Task<int> ActiveCountAsync(Guid roleId, CancellationToken ct) =>
@@ -690,7 +690,7 @@ public class AdminAccessController : ControllerBase
         {
             EmployeeId = employeeId,
             EventType = type,
-            Reason = reason.Length <= 1000 ? reason : reason[..1000],
+            Reason = SafeText.Truncate(reason, 1000),
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 

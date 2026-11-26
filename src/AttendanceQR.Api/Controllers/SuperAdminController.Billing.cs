@@ -1,8 +1,10 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace AttendanceQR.Api.Controllers;
 
@@ -119,10 +121,19 @@ public partial class SuperAdminController
         var y = request.Year.Value;
         var m = request.Month.Value;
 
+        // numeric(10,2) holds at most 99 999 999.99. A pasted VÖEN or a few extra zeros is a typo, never a bill; say so
+        // with the limit rather than let Postgres refuse it as an empty 500.
+        if (request.Amount is decimal typed and >= 0m
+            && FieldLimits.Check<TenantInvoice>(_db, nameof(TenantInvoice.Amount), typed) is { } tooLarge)
+            return BadRequest(FieldLimitErrors.Body(tooLarge));
+
         var now = DateTime.UtcNow;
         var emp = await _db.Employees.IgnoreQueryFilters().CountAsync(e => e.TenantId == id && e.IsActive, ct);
         var loc = await _db.Locations.IgnoreQueryFilters().CountAsync(l => l.TenantId == id && l.IsActive, ct);
-        var amount = request.Amount is decimal a and >= 0m ? a : tenant.MonthlyPriceOverride ?? Pricing.MonthlyAmount(emp, loc);
+        // Rounded as the column will store it, so the answer below echoes the saved amount, not the one sent.
+        var amount = request.Amount is decimal a and >= 0m
+            ? FieldLimits.RoundToColumn<TenantInvoice>(_db, nameof(TenantInvoice.Amount), a)
+            : tenant.MonthlyPriceOverride ?? Pricing.MonthlyAmount(emp, loc);
         var actor = User.EmployeeId();
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
 
@@ -148,12 +159,16 @@ public partial class SuperAdminController
             {
                 await _db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
             {
                 // Lost the race for this (tenant, period): the unique index rejected the insert because a
                 // concurrent mark already created the row. Re-read it and re-apply idempotently — same
                 // convention the scan/vote paths use for their unique-index races. Both markers compute the
                 // identical amount, so whoever wins, the settled value is correct.
+                //
+                // ONLY a unique violation. This caught every DbUpdateException once, so any other refusal (a value
+                // that does not fit its column, say) was taken for a lost race: the re-read below found no row,
+                // threw «Sequence contains no elements», and the log pointed at a race that never happened.
                 _db.ChangeTracker.Clear();
                 inv = await _db.TenantInvoices
                     .FirstAsync(i => i.TenantId == id && i.PeriodYear == y && i.PeriodMonth == m, ct);

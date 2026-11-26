@@ -55,13 +55,20 @@ public class AdminCalendarController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Description))
             return BadRequest(new { error = "DescriptionRequired" });
 
+        // A description pasted from the decree that declares the holiday is easily longer than the column. Said
+        // here, with the limit, so the admin shortens it and the day is recorded — a failed save leaves the date a
+        // working day, and everybody at home on it «Qayıb».
+        var description = request.Description.Trim();
+        if (FieldLimits.Check<NonWorkingDay>(_db, nameof(NonWorkingDay.Description), description) is { } tooLong)
+            return BadRequest(FieldLimitErrors.Body(tooLong));
+
         if (request.LocationId is not null && !await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 
         var day = new NonWorkingDay
         {
             Date = request.Date,
-            Description = request.Description.Trim(),
+            Description = description,
             LocationId = request.LocationId
         };
         _db.NonWorkingDays.Add(day);

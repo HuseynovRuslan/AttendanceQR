@@ -1,6 +1,8 @@
+using AttendanceQR.Api.Approvals;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -411,6 +413,11 @@ public class AdminAttendanceController : ControllerBase
 
         if (record.CheckOutAtUtc is not null)
         {
+            // Asked before a waiting self-correction is filed as well: approving it later would only meet the
+            // same refusal, and the person asking can do something about it now.
+            if (await AnotherStretchOpenAsync(record))
+                return Conflict(new { error = AnotherBlockOpen });
+
             var before = Times(record);
             var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
             if (self == SelfCorrectionAnswer.AwaitApproval)
@@ -427,7 +434,15 @@ public class AdminAttendanceController : ControllerBase
             if (self == SelfCorrectionAnswer.Apply)
                 SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.ClearCheckout,
                     record.CheckInAtUtc, beforeOut, record.CheckInAtUtc, null, reason, awaitsApproval: false, ip);
-            await PlanRebuilds.SaveWithNotesAsync(_db, [record.AttendanceDate], default);
+            try
+            {
+                await PlanRebuilds.SaveWithNotesAsync(_db, [record.AttendanceDate], default);
+            }
+            catch (DbUpdateException ex) when (IsSecondOpenStretch(ex))
+            {
+                // The later stretch was opened between the check above and this save (a scan at that moment).
+                return Conflict(new { error = AnotherBlockOpen });
+            }
 
             if (self is null)
                 await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, ip, $"check-out cleared, {before} → {Times(record)}", reason);
@@ -497,7 +512,7 @@ public class AdminAttendanceController : ControllerBase
             ? $"{record.AttendanceDate:dd.MM.yyyy} tarixli girişinizdə çəkilən şəkil üz "
               + "yoxlamasından keçmədi. Bu dəfə girişiniz qüvvədədir. Zəhmət olmasa növbəti "
               + "skanda üzünüz aydın görünsün — papaq və eynəyi çıxarın, işıqlı yerdə çəkin."
-            : custom.Length > 500 ? custom[..500] : custom;;
+            : SafeText.Truncate(custom, 500);
 
         _db.EmployeeNotifications.Add(new EmployeeNotification
         {
@@ -1079,6 +1094,9 @@ public class AdminAttendanceController : ControllerBase
                     return Conflict(new { error = "RecordChanged" });
                 if (row.Kind == SelfCorrection.ClearCheckout)
                 {
+                    // The request was filed while no other stretch was open; one may have opened since.
+                    if (await AnotherStretchOpenAsync(record))
+                        return Conflict(new { error = AnotherBlockOpen });
                     record.CheckOutAtUtc = null;
                     record.ManualByEmployeeId = row.EmployeeId;
                 }
@@ -1110,7 +1128,16 @@ public class AdminAttendanceController : ControllerBase
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
         DateOnly[] stale = request.Approve ? [row.AttendanceDate] : [];
-        await PlanRebuilds.SaveWithNotesAsync(_db, stale, ct);
+        try
+        {
+            await PlanRebuilds.SaveWithNotesAsync(_db, stale, ct);
+        }
+        catch (DbUpdateException ex) when (IsSecondOpenStretch(ex))
+        {
+            // Nothing was written — the decision row goes with the record in this one save — so the request
+            // still waits and can be approved once the later stretch is closed, or rejected.
+            return Conflict(new { error = AnotherBlockOpen });
+        }
         await PlanRebuilds.FinishAsync(_db, _dailySummaryService, stale, _logger);
         return Ok(new { status = request.Approve ? "Approved" : "Rejected" });
     }
@@ -1158,6 +1185,31 @@ public class AdminAttendanceController : ControllerBase
         await _db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// The refusal for re-opening one stretch of a day while another stretch of the same day is still open.
+    ///
+    /// A day can be two rows — a split shift's second block, a night after a morning, a day re-opened after a
+    /// field visit, any number of «Elastik qrafik» sessions — always the earlier closed and the later open.
+    /// Clearing the earlier one's check-out would leave the person checked in twice with no way to say which
+    /// stretch the next scan closes, and IX_AttendanceRecords_OneOpenPerDay forbids exactly that. Postgres
+    /// refused the UPDATE with a 23505 nothing caught, so the admin got a bare 500 and «Çıxış silinmədi» with
+    /// no reason; the in-memory tests never saw it because that provider enforces no index. Now it is asked
+    /// first and said plainly (close or remove the later stretch first), and the 23505 is caught as well for
+    /// a scan that opens the later stretch between the question and the save.
+    /// </summary>
+    private const string AnotherBlockOpen = "AnotherBlockOpen";
+
+    private const string OneOpenPerDayIndex = "IX_AttendanceRecords_OneOpenPerDay";
+
+    /// <summary>Whether another row of this person's day has no check-out — the same rows the index counts (it
+    /// filters on the check-out alone, so a row with no check-in counts too).</summary>
+    private Task<bool> AnotherStretchOpenAsync(AttendanceRecord record) =>
+        _db.AttendanceRecords.AnyAsync(r => r.EmployeeId == record.EmployeeId && r.AttendanceDate == record.AttendanceDate
+                                            && r.Id != record.Id && r.CheckOutAtUtc == null, HttpContext.RequestAborted);
+
+    private static bool IsSecondOpenStretch(DbUpdateException ex) =>
+        ChangeRequestDesk.UniqueViolation(ex) == OneOpenPerDayIndex;
+
     /// <summary>The 403 for a correction to one's own day, or null when the day is somebody else's. Nobody —
     /// an admin included — corrects the day they are paid for (the owner, 2026-10-15).</summary>
     private IActionResult? OwnDay(Guid employeeId) =>
@@ -1169,7 +1221,7 @@ public class AdminAttendanceController : ControllerBase
         $"{r.CheckInAtUtc:HH:mm}–{(r.CheckOutAtUtc is null ? "—" : r.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC";
 
     /// <summary>The audit column holds 1000 characters; a long reason is cut, never refused at save time.</summary>
-    private static string Cap(string text) => text.Length <= 1000 ? text : text[..1000];
+    private static string Cap(string text) => SafeText.Truncate(text, 1000);
 
     private static object Project(AttendanceRecord r) => new
     {

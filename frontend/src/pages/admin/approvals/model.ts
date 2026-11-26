@@ -1,5 +1,6 @@
 import type { ApiError, ApprovalBranch, ApprovalsMe, HistoryLine, RequestDetail, RequestStatus } from '../../../api/approvals'
 import type { MyAccess } from '../../../api/me'
+import { limitErrorText } from '../../../lib/limitErrors'
 import { formatPhone, phoneError } from '../../../lib/phone'
 
 /**
@@ -98,12 +99,21 @@ const APPLY_REASON: Record<string, string> = {
   ScheduleNotFound: 'seçilmiş növbə artıq yoxdur',
   ScheduleBelongsToOtherBranch: 'seçilmiş növbə artıq bu filiala aid deyil',
   NeedEmailOrPhone: 'telefon nömrəsi də, e-poçt da yoxdur',
+  TextTooLong: 'mətn sahələrindən biri çox uzundur',
 }
 
 /** Why an approval could not be applied, in words — for the history line «tətbiq olunmadı». */
 export function applyReason(code: string | undefined): string {
   return (code && APPLY_REASON[code]) || 'işçi hesabı yazıla bilmədi'
 }
+
+/**
+ * Two values the server BUILDS out of the form, so each part can fit and the whole not (ChangeRequestDesk): «ad
+ * soyad» becomes the account's name (Employees.FullName, 200), and with no phone «email:» + the address becomes the
+ * request's duplicate key (ChangeRequests.DedupeKey, 200). The server refuses both with FullNameTooLong/EmailTooLong.
+ */
+const FULL_NAME_MAX = 200
+const EMAIL_KEY_MAX = 200 - 'email:'.length
 
 const CODE: Record<string, string> = {
   ApprovalsDisabled: 'Təsdiq sistemi bu şirkətdə aktiv deyil.',
@@ -117,6 +127,7 @@ const CODE: Record<string, string> = {
   IdempotencyKeyReused: 'Bu müraciət artıq göndərilib. Siyahını yeniləyin.',
   NameRequired: 'Ad və soyad yazılmalıdır.',
   NameTooLong: 'Ad, soyad və ata adı ən çox 100 hərf ola bilər.',
+  FullNameTooLong: `Ad və soyad birlikdə ən çox ${FULL_NAME_MAX} hərf ola bilər (aradakı boşluq da sayılır).`,
   NeedEmailOrPhone: 'Telefon nömrəsi və ya e-poçt yazın: işçi bununla daxil olacaq.',
   PhoneAlreadyExists: 'Bu telefon nömrəsi ilə artıq işçi var.',
   EmailAlreadyExists: 'Bu e-poçt ilə artıq işçi var.',
@@ -154,6 +165,8 @@ export function errorText(status: number, body?: unknown): string {
       ? 'Bu filialda yeni işçi təsdiqlə əlavə olunur. «Yeni işçi müraciəti» göndərin.'
       : 'Bu filialda yeni işçi təsdiqlə əlavə olunur, sizin isə müraciət göndərmək icazəniz yoxdur.'
   if (e && CODE[e.error]) return CODE[e.error]
+  const limit = limitErrorText(body)
+  if (limit) return limit
   if (status === 403) return 'Bu əməliyyat üçün icazəniz yoxdur.'
   if (status === 404) return 'Tapılmadı.'
   if (status === 409) return 'Vəziyyət dəyişib. Siyahını yeniləyin.'
@@ -187,6 +200,7 @@ export function validateDraft(d: NewEmployeeDraft): DraftErrors {
   const errors: DraftErrors = {}
   if (!d.firstName.trim() || !d.lastName.trim()) errors.name = 'Ad və soyad yazılmalıdır.'
   else if (d.firstName.trim().length > 100 || d.lastName.trim().length > 100) errors.name = 'Ad və soyad ən çox 100 hərf ola bilər.'
+  else if (`${d.firstName.trim()} ${d.lastName.trim()}`.length > FULL_NAME_MAX) errors.name = CODE.FullNameTooLong
   if (d.fatherName.trim().length > 100) errors.father = 'Ata adı ən çox 100 hərf ola bilər.'
   const phone = d.phone.trim()
   const email = d.email.trim()
@@ -196,6 +210,7 @@ export function validateDraft(d: NewEmployeeDraft): DraftErrors {
     if (bad) errors.phone = bad
   }
   if (email && (email.length > 256 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) errors.email = 'E-poçtu düzgün yazın.'
+  else if (email && !phone && email.length > EMAIL_KEY_MAX) errors.email = CODE.EmailTooLong
   if (d.note.trim().length > 500) errors.note = 'Qeyd ən çox 500 hərf ola bilər.'
   return errors
 }

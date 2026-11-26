@@ -15,6 +15,7 @@ import { getAllEmployees, type AdminEmployeeRow } from '../../api/admin'
 // and it reads the VIEWER'S timezone. A date-only rendering of an instant taken in the device's zone
 // shows the wrong day either side of midnight — the bug this project has already been bitten by.
 import { fmtDateOfInstant } from '../../lib/format'
+import { limitErrorText } from '../../lib/limitErrors'
 import { countKit, groupByArea, hasKind, KIT_LABEL, kitLabel, ordinaryKinds, readKit, unlinkedIsExceptional, type KitKind } from '../../lib/equipmentKit'
 import {
   IconAlert,
@@ -62,6 +63,22 @@ const ERRORS: Record<string, string> = {
   UnreadableFile: 'Fayl oxunmadı — .xlsx formatında olmalıdır',
   HeaderNotFound: 'Cədvəlin başlıq sətri tapılmadı — «Soyadı, adı, atasının adı» və «Avadanlıq» sütunları olmalıdır',
 }
+
+/** The columns by the names the register's own header gives them — what the server's `field` is turned into. */
+const FIELD_LABEL: Record<string, string> = {
+  fullName: 'Soyadı, adı, atasının adı',
+  position: 'Vəzifəsi',
+  area: 'İşlədiyi ərazi',
+  equipment: 'Avadanlıq',
+  systemUnit: 'Sistem bloku',
+  monitor: 'Monitor',
+  otherEquipment: 'Digər avadanlıq',
+}
+
+/** EquipmentRecordConfiguration: the name, the job title and the area are varchar(200); the four kit columns 2000.
+ *  The server refuses with the field and the limit if these ever drift; the fields stop the typing first. */
+const SHORT_MAX = 200
+const KIT_MAX = 2000
 
 const EMPTY_FORM: EquipmentInput = {
   rowNo: null,
@@ -352,7 +369,7 @@ export function EquipmentPage() {
 
   function fail(data: unknown, fallback: string) {
     const code = data && typeof data === 'object' && 'error' in data ? String((data as { error: string }).error) : ''
-    setErr(ERRORS[code] ?? fallback)
+    setErr(limitErrorText(data, FIELD_LABEL) ?? ERRORS[code] ?? fallback)
   }
 
   function openNew() {
@@ -595,6 +612,24 @@ export function EquipmentPage() {
                 İdxal «Sıra №» üzrə işləyir — eyni faylı yenidən yükləsəniz sətirlər təzələnir,
                 təkrarlanmır. Faylda olmayan sətirlər silinmir.
               </div>
+              {(imported.tooLong?.length ?? 0) > 0 && (
+                <>
+                  {/* Not cut to fit on the server: this is the kit somebody orders against, and a description
+                      cut mid-sentence is a wrong count nobody notices. The line keeps what it had until the
+                      file is fixed and uploaded again. */}
+                  <div style={{ marginTop: 6, color: 'var(--clay)' }}>
+                    {imported.tooLong!.length} sətir idxal olunmadı — xanadakı mətn sütuna sığmır. Faylda qısaldıb
+                    yenidən yükləyin:
+                  </div>
+                  <ul className="muted" style={{ fontSize: 12, margin: '2px 0 0', paddingLeft: 18 }}>
+                    {imported.tooLong!.map((t) => (
+                      <li key={`${t.rowNo}-${t.field}-${t.fullName}`}>
+                        Sıra № {t.rowNo} · {t.fullName} — «{FIELD_LABEL[t.field] ?? t.field}» ən çox {t.max} hərf ola bilər
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               {imported.unmatched.length > 0 && (
                 <>
                   <div style={{ marginTop: 6 }}>
@@ -631,18 +666,18 @@ export function EquipmentPage() {
             </div>
             <div>
               <label className="form-label">Soyadı, adı, atasının adı</label>
-              <input className="inp" required value={form.fullName} onChange={(e) => set('fullName', e.target.value)} />
+              <input className="inp" required maxLength={SHORT_MAX} value={form.fullName} onChange={(e) => set('fullName', e.target.value)} />
             </div>
           </div>
 
           <div className="form-row cols2">
             <div>
               <label className="form-label">Vəzifəsi</label>
-              <input className="inp" value={form.position ?? ''} onChange={(e) => set('position', e.target.value || null)} />
+              <input className="inp" maxLength={SHORT_MAX} value={form.position ?? ''} onChange={(e) => set('position', e.target.value || null)} />
             </div>
             <div>
               <label className="form-label">İşlədiyi ərazi</label>
-              <input className="inp" value={form.area ?? ''} onChange={(e) => set('area', e.target.value || null)} />
+              <input className="inp" maxLength={SHORT_MAX} value={form.area ?? ''} onChange={(e) => set('area', e.target.value || null)} />
             </div>
           </div>
 
@@ -652,6 +687,7 @@ export function EquipmentPage() {
               <textarea
                 className="inp"
                 rows={3}
+                maxLength={KIT_MAX}
                 value={form.equipment ?? ''}
                 onChange={(e) => set('equipment', e.target.value || null)}
               />
@@ -664,6 +700,7 @@ export function EquipmentPage() {
               <textarea
                 className="inp"
                 rows={3}
+                maxLength={KIT_MAX}
                 value={form.systemUnit ?? ''}
                 onChange={(e) => set('systemUnit', e.target.value || null)}
               />
@@ -673,6 +710,7 @@ export function EquipmentPage() {
               <textarea
                 className="inp"
                 rows={3}
+                maxLength={KIT_MAX}
                 value={form.monitor ?? ''}
                 onChange={(e) => set('monitor', e.target.value || null)}
               />
@@ -685,6 +723,7 @@ export function EquipmentPage() {
               <textarea
                 className="inp"
                 rows={3}
+                maxLength={KIT_MAX}
                 value={form.otherEquipment ?? ''}
                 onChange={(e) => set('otherEquipment', e.target.value || null)}
               />

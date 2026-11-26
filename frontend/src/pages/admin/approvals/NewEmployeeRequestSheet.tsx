@@ -119,7 +119,7 @@ export function NewEmployeeRequestSheet({ branch, onClose, onSent }: {
               <label className="apx-field">
                 <span>E-poçt (istəyə bağlı)</span>
                 <input className="apx-input" type="email" inputMode="email" value={d.email} onChange={(e) => set('email', e.target.value)}
-                  aria-invalid={!!show('email')} autoComplete="off" />
+                  maxLength={256} aria-invalid={!!show('email')} autoComplete="off" />
                 {show('email') && <span className="apx-field-err" role="alert">{errors.email}</span>}
               </label>
             </div>
