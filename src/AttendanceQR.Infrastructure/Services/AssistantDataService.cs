@@ -50,8 +50,16 @@ public sealed class AssistantDataService
     public async Task<object> TodayStatusAsync(Guid employeeId, CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(NowLocal);
+        // A day can hold more than one stretch (a split shift, a return after a field visit, a flexible
+        // schedule's next session), so WHICH row is the answer: the open one if there is one, otherwise the
+        // latest — the same choice as AttendanceQueryService.GetTodayAsync, which the Home and Scan screens
+        // show. Unordered, Postgres was free to return the morning's closed block, and the assistant told
+        // somebody in their second stretch «gün tamamlanıb». A voided record (judged a fake scan) is not a
+        // check-in: every day computation skips it, and the board shows that day as Qayıb.
         var record = await _db.AttendanceRecords
-            .Where(r => r.EmployeeId == employeeId && r.AttendanceDate == today)
+            .Where(r => r.EmployeeId == employeeId && r.AttendanceDate == today && r.VoidedAtUtc == null)
+            .OrderBy(r => r.CheckOutAtUtc == null ? 0 : 1)
+            .ThenByDescending(r => r.CheckInAtUtc)
             .Select(r => new { r.CheckInAtUtc, r.CheckOutAtUtc, Status = r.Status.ToString() })
             .FirstOrDefaultAsync(ct);
 

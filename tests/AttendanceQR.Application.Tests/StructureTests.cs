@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Reflection;
 using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -142,6 +144,62 @@ public class StructureTests
         Assert.IsType<OkObjectResult>(await w.Admin(TenantA).Create(new StructureRequest("Aeroport yolu")));
         // …and the archived one cannot come back while the name is in use.
         Assert.Equal("NameTaken", ErrorOf(await w.Admin(TenantA).Restore(first)));
+    }
+
+    [Theory]
+    // The live name holds a capital «İ». Postgres lowers «İ» to 'i'; .NET's invariant casing — what the server
+    // runs, it sets no culture — leaves it. The check used to lower each side on its own side, so none of these
+    // was caught, and the case-sensitive unique index let every one of them in beside the original.
+    [InlineData("İnzibati Şöbə")]
+    [InlineData("İNZİBATİ ŞÖBƏ")]
+    [InlineData("inzibati şöbə")]
+    // Typed on a keyboard with no «İ».
+    [InlineData("INZIBATI ŞÖBƏ")]
+    public async Task A_name_with_azerbaijani_capitals_is_taken_whatever_its_case(string typed)
+    {
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        try
+        {
+            using var w = new World();
+            var first = await w.CreateAsync("İnzibati şöbə");
+            var other = await w.CreateAsync("Təsərrüfat");
+
+            var created = await w.Admin(TenantA).Create(new StructureRequest(typed));
+            Assert.IsType<ConflictObjectResult>(created);
+            Assert.Equal("NameTaken", ErrorOf(created));
+
+            var renamed = await w.Admin(TenantA).Rename(other, new StructureRequest(typed));
+            Assert.Equal("NameTaken", ErrorOf(renamed));
+
+            // Renaming a structure to its own name in another case is not a clash with itself.
+            Assert.IsType<OkObjectResult>(await w.Admin(TenantA).Rename(first, new StructureRequest(typed)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    [Fact]
+    public void The_name_check_folds_both_sides_in_the_database()
+    {
+        // Compiled against the real PostgreSQL provider, never connected (AzerbaijaniSearchTests). The stored name
+        // is folded by lower(translate()) in SQL and the typed one by the same rule in C# before it is sent.
+        var tenant = new TenantContext();
+        tenant.Resolve(TenantA);
+        using var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>()
+                .UseNpgsql("Host=localhost;Port=5432;Database=none;Username=none;Password=none").Options,
+            tenant);
+
+        var sql = db.Structures.Where(StructuresController.SameLiveName("İNZİBATİ Şöbə", exceptId: null)).ToQueryString();
+
+        Assert.Contains("lower(translate(", sql);
+        Assert.Contains(SearchText.From, sql);
+        Assert.Contains("inzibati şöbə", sql);
+        Assert.DoesNotContain("İNZİBATİ", sql);
+        Assert.Contains("\"ArchivedAtUtc\" IS NULL", sql);
     }
 
     [Fact]

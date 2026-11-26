@@ -543,10 +543,11 @@ public class AdminController : ControllerBase
     /// Resolves one row's branch and role: the row's own if it names them, otherwise the batch's.
     /// A spreadsheet carries a branch NAME, so it is matched against this tenant's branches — case
     /// and surrounding space are the typist's business, not theirs to get exactly right. A name that
-    /// matches nothing fails that row alone rather than silently landing the person somewhere else.
+    /// matches nothing fails that row alone rather than silently landing the person somewhere else,
+    /// and so does a name that matches more than one branch (see <see cref="BranchesByName"/>).
     /// </summary>
     private static (Guid LocationId, EmployeeRole Role, string? Error) ResolveRowScope(
-        BulkInviteRow row, Guid batchLocationId, EmployeeRole batchRole, Dictionary<string, Guid> locationsByName,
+        BulkInviteRow row, Guid batchLocationId, EmployeeRole batchRole, Dictionary<string, Guid?> locationsByName,
         bool impersonating)
     {
         var locationId = batchLocationId;
@@ -554,7 +555,9 @@ public class AdminController : ControllerBase
         {
             if (!locationsByName.TryGetValue(row.LocationName.Trim(), out var found))
                 return (default, default, "LocationNotFound");
-            locationId = found;
+            if (found is not Guid only)
+                return (default, default, "LocationAmbiguous");
+            locationId = only;
         }
 
         var role = batchRole;
@@ -585,10 +588,35 @@ public class AdminController : ControllerBase
         _ => null,
     };
 
-    private async Task<Dictionary<string, Guid>> LocationsByNameAsync(CancellationToken ct) =>
-        (await _db.Locations.Select(l => new { l.Id, l.Name }).ToListAsync(ct))
-        .GroupBy(l => l.Name.Trim(), StringComparer.OrdinalIgnoreCase)
-        .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+    private async Task<Dictionary<string, Guid?>> LocationsByNameAsync(CancellationToken ct) =>
+        BranchesByName((await _db.Locations.Select(l => new { l.Id, l.Name, l.IsActive }).ToListAsync(ct))
+            .Select(l => (l.Id, l.Name, l.IsActive)));
+
+    /// <summary>
+    /// Each branch name a spreadsheet may carry → the one branch it means, or null when it means more than one.
+    ///
+    /// Nothing stops a company from having two branches of the same name — most often a deactivated one and the
+    /// new one that replaced it, since deactivating is what we tell admins to do instead of deleting. This used to
+    /// take the first of the matches in whatever order the database returned them, which is no order: the import
+    /// filed new staff under the closed branch on one day and the open one on another, and said nothing either way.
+    ///
+    /// So: an active branch wins over a deactivated one, because nobody imports people into a closed branch on
+    /// purpose. A name that leaves more than one candidate after that is refused, never guessed — the row fails
+    /// as LocationAmbiguous and the admin decides. A deactivated branch is still found when it is the only one of
+    /// that name: naming it is then a deliberate choice, and the template's list offers it. The answer does not
+    /// depend on the order the rows arrive in, because a tie is never broken.
+    /// </summary>
+    internal static Dictionary<string, Guid?> BranchesByName(IEnumerable<(Guid Id, string Name, bool IsActive)> branches) =>
+        branches
+            .GroupBy(b => b.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var preferred = g.Any(b => b.IsActive) ? g.Where(b => b.IsActive).ToList() : g.ToList();
+                    return preferred.Count == 1 ? preferred[0].Id : (Guid?)null;
+                },
+                StringComparer.OrdinalIgnoreCase);
 
     // POST /api/admin/employees/bulk-invite — add many employees at once (one shared location + role).
     // Each row is validated on its own: a duplicate phone or missing name is reported back in `failed`
