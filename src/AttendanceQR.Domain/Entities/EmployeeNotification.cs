@@ -24,8 +24,9 @@ public enum EmployeeNotificationType
 }
 
 /// <summary>
-/// A reminder that was sent to one employee. Serves two jobs at once: the (EmployeeId, Type,
-/// RelatedDate) unique index is what stops the job sending the same nudge twice, and the rows are the
+/// A reminder that was sent to one employee. Serves two jobs at once: one row per (EmployeeId, Type,
+/// RelatedDate) is what stops the job sending the same nudge twice — it skips what is on record, and the
+/// unique index catches two sweeps racing — and the rows are the
 /// employee's notification inbox — a push that is only ever a phone banner is gone the moment it's
 /// swiped away, so the app has nothing to show. Tenant-scoped.
 /// </summary>
