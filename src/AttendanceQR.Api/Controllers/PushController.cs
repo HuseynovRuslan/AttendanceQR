@@ -3,6 +3,7 @@ using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -123,9 +124,20 @@ public class PushController : ControllerBase
         return Ok(new { acknowledged = true });
     }
 
+    /// <summary>
+    /// Never in a support session — neither an explicit enable nor the app's automatic re-bind after a sign-in. Its
+    /// token names the customer's admin, so the device is the operator's: subscribing it would deliver that company's
+    /// notifications to the operator's browser. ImpersonationBoundary already refuses these routes (they are not
+    /// console writes); this answers the same here as well, so it does not depend on that list staying as it is.
+    /// </summary>
+    private IActionResult? RefuseSupportSession() =>
+        User.IsImpersonating() ? StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" }) : null;
+
     [HttpPost("subscribe")]
     public async Task<IActionResult> Subscribe([FromBody] PushSubscribeRequest request)
     {
+        if (RefuseSupportSession() is { } refused)
+            return refused;
         var ct = HttpContext.RequestAborted;
         if (string.IsNullOrWhiteSpace(request.Endpoint) || string.IsNullOrWhiteSpace(request.P256dh)
             || string.IsNullOrWhiteSpace(request.Auth))
@@ -203,6 +215,8 @@ public class PushController : ControllerBase
     [HttpPost("register-native")]
     public async Task<IActionResult> RegisterNative([FromBody] PushRegisterNativeRequest request)
     {
+        if (RefuseSupportSession() is { } refused)
+            return refused;
         var ct = HttpContext.RequestAborted;
         if (string.IsNullOrWhiteSpace(request.Token))
             return BadRequest(new { error = "InvalidToken" });
