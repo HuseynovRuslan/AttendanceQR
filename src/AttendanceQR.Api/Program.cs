@@ -210,6 +210,8 @@ builder.Services.AddSingleton<IFcmSender, FirebaseFcmSender>();
 
 // Scoped: fans a notification out over an employee's subscriptions (needs the DbContext).
 builder.Services.AddScoped<IPushNotifier, PushNotifier>();
+// Once at startup: binds subscriptions registered before they followed the session. See PushSessionBinding.
+builder.Services.AddHostedService<PushSubscriptionAdoption>();
 builder.Services.AddScoped<IVoteAnnouncer, VoteAnnouncer>();
 
 // Pushes "you forgot to check out" once a shift has been over for a while — the only reminder that

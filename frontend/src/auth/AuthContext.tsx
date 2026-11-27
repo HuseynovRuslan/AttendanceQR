@@ -11,6 +11,7 @@ import { clearToken, getToken, setToken, setUnauthorizedHandler } from '../api/c
 import { decodeJwt, roleHome, type Role } from '../lib/jwt'
 import { listProfiles, rememberCurrent, removeProfile, type SavedProfile } from '../lib/profiles'
 import { getMyProfile } from '../api/attendance'
+import { resyncPushForToken } from '../lib/push'
 
 interface AuthState {
   token: string | null
@@ -39,6 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // truth to keep in step.
   const profiles = useMemo(() => listProfiles(), [token])
   const navigate = useNavigate()
+
+  useEffect(() => {
+    // A device's push subscription belongs to the session that registered it, so a new token (sign-in,
+    // PIN change, another account) re-registers it — once per token, in the background. See lib/push.ts.
+    void resyncPushForToken(token)
+  }, [token])
 
   useEffect(() => {
     // A 401 from any authenticated call clears the session and returns to login.

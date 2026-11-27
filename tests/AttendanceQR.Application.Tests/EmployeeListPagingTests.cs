@@ -128,14 +128,21 @@ public class EmployeeListPagingTests
             Db.SaveChanges();
         }
 
-        public void Push(Guid employeeId)
+        public void Push(Guid employeeId, int tokenVersion = PushSubscription.Unbound)
         {
             Db.PushSubscriptions.Add(new PushSubscription
             {
                 Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = employeeId,
                 Endpoint = "https://push.example/" + Guid.NewGuid().ToString("N"),
-                P256dh = "k", Auth = "a", CreatedAtUtc = DateTime.UtcNow,
+                P256dh = "k", Auth = "a", CreatedAtUtc = DateTime.UtcNow, TokenVersion = tokenVersion,
             });
+            Db.SaveChanges();
+        }
+
+        /// <summary>Ends the person's sessions, the way a PIN reset or «hər yerdən çıxış» does.</summary>
+        public void EndSessions(Guid employeeId)
+        {
+            Db.Employees.IgnoreQueryFilters().Single(e => e.Id == employeeId).TokenVersion++;
             Db.SaveChanges();
         }
 
@@ -319,6 +326,28 @@ public class EmployeeListPagingTests
 
         Assert.Equal([unreachable], Ids(await h.Admin.List(status: "nopush")));
         Assert.Equal([unreachable], Ids(await h.Admin.List(status: "nodevice")));
+    }
+
+    [Fact]
+    public async Task A_device_whose_session_ended_does_not_count_as_reachable()
+    {
+        using var h = new Harness();
+        var signedIn = h.Person("Daxil olan");     // registered by the session they still hold
+        var earlier = h.Person("Köhnə qeyd");      // registered before subscriptions followed the session
+        var reset = h.Person("PIN-i sıfırlanan");  // registered, then every session ended
+        h.Push(signedIn, tokenVersion: 0);
+        h.Push(earlier);
+        h.Push(reset, tokenVersion: 0);
+        h.EndSessions(reset);
+
+        // That device reaches nobody now (PushSessionBinding), so the admin must not read it as «push açıq».
+        Assert.Equal([reset], Ids(await h.Admin.List(status: "nopush")));
+        var items = Items(await h.Admin.List());
+        bool PushOn(Guid id) => Get<bool>(items.Single(i => Get<Guid>(i, "id") == id), "pushEnabled");
+        Assert.True(PushOn(signedIn));
+        Assert.True(PushOn(earlier));
+        Assert.False(PushOn(reset));
+        Assert.Equal(1, Get<int>(Ok(await h.Admin.Stats()), "noPush"));
     }
 
     [Fact]

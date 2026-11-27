@@ -4,9 +4,10 @@
 // Platform reality worth knowing: on iOS this works ONLY on iOS 16.4+ AND only when the PWA has been
 // added to the home screen (in Safari's normal browser tab there is no PushManager at all). Android
 // and desktop Chrome work either way. `pushSupported()` reflects exactly that.
-import { apiRequest } from '../api/client'
+import { apiRequest, getToken } from '../api/client'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
+import { decodeJwt } from './jwt'
 
 export interface PushKeyInfo {
   enabled: boolean
@@ -183,7 +184,89 @@ export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'd
       method: 'POST',
       body: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
     })
-    return res.status === 200 ? 'ok' : 'failed'
+    if (res.status !== 200) return 'failed'
+    // The server just bound this device to the current session — nothing for resyncPushForToken to redo.
+    const claims = decodeJwt(getToken() ?? '')
+    if (claims?.sub && claims.tv !== undefined) writePushSync(`${claims.sub}:${claims.tv}`)
+    return 'ok'
+  } catch {
+    return 'failed'
+  }
+}
+
+// --- the subscription follows the session ------------------------------------
+// The server sends a push only to devices registered by the account's CURRENT session: a PIN reset or
+// «hər yerdən çıxış» ends the session on every device, and its pushes with it (PushSessionBinding). A
+// device whose person signs in again therefore has to say so — the browser still holds its subscription,
+// it is the server's binding that ended. Done once per token identity (`sub:tv`), not on every load: the
+// same token never needs it twice, and a new one (sign-in, PIN change, another account on a crew phone)
+// always gets it.
+const PUSH_SYNC_KEY = 'attendanceqr.pushSync'
+
+function readPushSync(): string | null {
+  try {
+    return localStorage.getItem(PUSH_SYNC_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writePushSync(pair: string): void {
+  try {
+    localStorage.setItem(PUSH_SYNC_KEY, pair)
+  } catch {
+    /* private mode — the next load simply asks again */
+  }
+}
+
+export type PushResync = 'synced' | 'skipped' | 'failed'
+
+/**
+ * Re-registers this device's existing push subscription under the session `token` belongs to.
+ * Fire-and-forget: never throws, never asks for permission, never creates a subscription the person did
+ * not switch on, and is bounded in time — nothing on the sign-in or scan path waits for it.
+ * A refresh never takes over a subscription another account on this browser holds (`refresh: true`).
+ */
+export async function resyncPushForToken(token: string | null): Promise<PushResync> {
+  try {
+    if (!token) return 'skipped'
+    const claims = decodeJwt(token)
+    // An operator's session in someone else's account must never bind the operator's browser to it, and a
+    // temporary-PIN session is refused this endpoint until the person picks their own (the token changes then).
+    if (!claims?.sub || claims.tv === undefined || claims.imp || claims.mcp === '1') return 'skipped'
+    const pair = `${claims.sub}:${claims.tv}`
+    if (readPushSync() === pair) return 'skipped'
+
+    if (isNative()) {
+      initNativePush()
+      const perm = await PushNotifications.checkPermissions()
+      if (perm.receive !== 'granted') return 'skipped'
+      // The 'registration' listener (initNativePush) posts the token under the current session.
+      await PushNotifications.register()
+      writePushSync(pair)
+      return 'synced'
+    }
+
+    if (!pushSupported() || Notification.permission !== 'granted') return 'skipped'
+    const reg = await activeRegistration()
+    if (!reg) return 'skipped'
+    const sub = await reg.pushManager.getSubscription()
+    if (!sub) return 'skipped'
+    const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } }
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return 'skipped'
+
+    // Sent with THIS token (not whatever is active by the time it lands), so the pair stored below is the
+    // session the server actually bound; and a 401 here — a token already dead — never signs anyone out
+    // from a background call (the next ordinary request does that).
+    const res = await apiRequest('/api/push/subscribe', {
+      method: 'POST',
+      token,
+      timeoutMs: 10_000,
+      body: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth, refresh: true },
+    })
+    if (res.status !== 200) return 'failed'
+    writePushSync(pair)
+    return 'synced'
   } catch {
     return 'failed'
   }

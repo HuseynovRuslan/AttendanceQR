@@ -65,8 +65,13 @@ public class ForgotPinAppShellTests
         /// <summary>The staff alerts the controller raised — what the branch's managers would be pushed.</summary>
         public CapturingAlerts Alerts { get; } = new();
 
+        /// <summary>The pushes the controller sent, each with the account's TokenVersion as the database held
+        /// it at that moment — the session whose devices a push can still reach (PushSessionBinding).</summary>
+        public StubPush Push { get; } = new();
+
         public Harness(bool sharedBActivated = true, bool sharedBActive = true)
         {
+            Push.VersionNow = id => Row(id).TokenVersion;
             // Seeding needs a tenant, like every other write in the app does; the controller under test
             // gets its own context below.
             using var seed = Context(TenantA);
@@ -127,7 +132,7 @@ public class ForgotPinAppShellTests
 
             return new AuthController(
                 db, tenant, new StubHasher(), new StubJwt(), Lockout, new StubPhotoStorage(),
-                new StubFaceMatch(faceScore), new StubPush(), Cache,
+                new StubFaceMatch(faceScore), Push, Cache,
                 NullLogger<AuthController>.Instance, Alerts)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
@@ -218,11 +223,18 @@ public class ForgotPinAppShellTests
 
     /// <summary>The reset alert reads PushSubscriptions, which is tenant-filtered — a stub keeps the
     /// test about the tenant resolution, not about push.</summary>
-    private sealed class StubPush : IPushNotifier
+    internal sealed class StubPush : IPushNotifier
     {
+        public Func<Guid, int>? VersionNow { get; set; }
+        public List<(Guid EmployeeId, string Title, int TokenVersionAtSend)> Sent { get; } = new();
+
         public Task<int> NotifyEmployeesAsync(
             IReadOnlyCollection<Guid> employeeIds, string title, string body, string? url, CancellationToken ct = default)
-            => Task.FromResult(0);
+        {
+            foreach (var id in employeeIds)
+                Sent.Add((id, title, VersionNow?.Invoke(id) ?? -1));
+            return Task.FromResult(0);
+        }
     }
 
     /// <summary>Every forgot-pin outcome answers with this one body — match, miss or ambiguous.</summary>
@@ -448,6 +460,22 @@ public class ForgotPinAppShellTests
         var audit = Assert.Single(h.AuditLogs());
         Assert.Equal(AuditEventType.PinResetSelfService, audit.EventType);
         Assert.Equal(TenantA, audit.TenantId);
+    }
+
+    [Fact]
+    public async Task The_reset_alert_goes_out_while_the_ending_session_still_holds_its_devices()
+    {
+        // A push reaches only the devices of the CURRENT session, and the reset ends it (TokenVersion 0 → 1).
+        // The alert exists for exactly those devices — the real employee's phone — so it must be sent first.
+        using var h = new Harness();
+
+        await h.AppShell().ForgotPinVerify(new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64));
+
+        var alert = Assert.Single(h.Push.Sent);
+        Assert.Equal(h.AliceId, alert.EmployeeId);
+        Assert.Equal("PIN sıfırlandı", alert.Title);
+        Assert.Equal(0, alert.TokenVersionAtSend);
+        Assert.Equal(1, h.Row(h.AliceId).TokenVersion);
     }
 
     [Fact]

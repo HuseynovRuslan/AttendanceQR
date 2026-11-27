@@ -633,6 +633,26 @@ public partial class AuthController : ControllerBase
         }
         _cache.Remove(faceLockKey); // a genuine match clears the failure counter
 
+        // Out-of-band alert so a fraudulent self-service reset is visible to the real employee straight
+        // away. Sent BEFORE the reset below, on purpose: the reset bumps TokenVersion, and a push goes only
+        // to the devices of the CURRENT session (PushSessionBinding) — sent after, it would reach none of
+        // the devices the real employee is signed in on, which are exactly the ones it is for. Nothing is
+        // pending on the context yet, so the notifier's own save (pruning) cannot commit half a reset.
+        // Best-effort — never fail the reset if push is unavailable.
+        try
+        {
+            await _pushNotifier.NotifyEmployeesAsync(
+                new[] { employee.Id },
+                "PIN sıfırlandı",
+                "PIN-iniz özünə-xidmət (üz təsdiqi) ilə sıfırlandı. Siz deyildinizsə, dərhal administratora müraciət edin.",
+                "/login",
+                HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (!HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Forgot-pin verify: reset notification failed for {EmployeeId}", employee.Id);
+        }
+
         // Both factors passed — reset the PIN and hand it back, same reset an admin ResetPin does.
         var pin = PinRules.Generate();
         employee.PasswordHash = _passwordHasher.Hash(pin);
@@ -667,23 +687,6 @@ public partial class AuthController : ControllerBase
         var appLoginIpKey = $"applogin-ip:{ip}";
         if (_cache.TryGetValue(appLoginIpKey, out int appIpFails) && appIpFails > 0)
             _cache.Set(appLoginIpKey, appIpFails - 1, AppLoginIpWindow);
-
-        // Out-of-band alert so a fraudulent self-service reset is visible to the real employee straight
-        // away, even though this same call just logged them out. Best-effort — never fail the reset if
-        // push is unavailable (the account is already reset by here).
-        try
-        {
-            await _pushNotifier.NotifyEmployeesAsync(
-                new[] { employee.Id },
-                "PIN sıfırlandı",
-                "PIN-iniz özünə-xidmət (üz təsdiqi) ilə sıfırlandı. Siz deyildinizsə, dərhal administratora müraciət edin.",
-                "/login",
-                HttpContext.RequestAborted);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Forgot-pin verify: reset notification failed for {EmployeeId}", employee.Id);
-        }
 
         return Ok(new { verified = true, pin });
     }
