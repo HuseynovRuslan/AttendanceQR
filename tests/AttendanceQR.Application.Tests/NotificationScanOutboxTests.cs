@@ -38,7 +38,7 @@ public class NotificationScanOutboxTests
         public AttendanceController Controller { get; }
         private readonly QrTokenService _qr = new(Options.Create(new QrTokenOptions { Secret = "notification-outbox-scan-tests", TtlSeconds = 300 }));
 
-        public Rig()
+        public Rig(Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor? interceptor = null)
         {
             using (var setup = World.Context(AccessWorld.TenantA))
             {
@@ -47,7 +47,7 @@ public class NotificationScanOutboxTests
                 (b1.ShiftStart, b1.ShiftEnd, b1.LateThresholdMinutes) = (new TimeOnly(9, 0), new TimeOnly(18, 0), 15);
                 setup.SaveChanges();
             }
-            Db = World.Context(AccessWorld.TenantA);
+            Db = World.Context(AccessWorld.TenantA, interceptor: interceptor);
             var cache = new MemoryCache(new MemoryCacheOptions());
             Controller = new AttendanceController(
                 Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), new PhotoUploadQueue(), new StubFace(),
@@ -105,6 +105,55 @@ public class NotificationScanOutboxTests
         Assert.Equal(r.World.E1, e.SubjectEmployeeId);
         Assert.Equal(NotificationEventStatus.Pending, e.Status);
         Assert.Equal([AccessWorld.TenantA], r.Hint.Tenants);
+    }
+
+    [Fact]
+    public async Task A_database_that_refuses_the_event_still_records_the_check_in_and_the_check_out()
+    {
+        using var r = new Rig(new RefuseEvents());
+        using (var db = r.World.Context(AccessWorld.TenantA))
+        {
+            db.NotificationPreferences.Add(new NotificationPreference
+            {
+                EmployeeId = r.World.Admin1,
+                EnabledTypes = NotificationTypes.ToCsv([NotificationTypes.CheckIn, NotificationTypes.CheckOut]),
+            });
+            db.SaveChanges();
+        }
+
+        var arrival = Assert.IsType<OkObjectResult>(await r.Controller.Scan(r.Scan()));
+        Assert.Equal("CheckIn", JsonAction(arrival));
+        var record = Assert.Single(r.World.Context(AccessWorld.TenantA).AttendanceRecords.AsNoTracking());
+        Assert.Empty(r.World.Context(AccessWorld.TenantA).NotificationEvents);
+
+        // Three hours later the same person leaves: the check-out is saved too, the event again is not.
+        r.Db.ChangeTracker.Clear();
+        using (var db = r.World.Context(AccessWorld.TenantA))
+        {
+            db.AttendanceRecords.Single(x => x.Id == record.Id).CheckInAtUtc = DateTime.UtcNow.AddHours(-3);
+            db.SaveChanges();
+        }
+        var departure = Assert.IsType<OkObjectResult>(await r.Controller.Scan(r.Scan()));
+        Assert.Equal("CheckOut", JsonAction(departure));
+        Assert.NotNull(r.World.Context(AccessWorld.TenantA).AttendanceRecords.AsNoTracking().Single().CheckOutAtUtc);
+        Assert.Empty(r.World.Context(AccessWorld.TenantA).NotificationEvents);
+        Assert.Empty(r.Hint.Tenants);
+    }
+
+    private static string? JsonAction(OkObjectResult ok) =>
+        System.Text.Json.JsonSerializer.SerializeToElement(ok.Value).GetProperty("action").GetString();
+
+    /// <summary>A database that fails every save carrying an outbox row — whatever the reason might one day be.</summary>
+    private sealed class RefuseEvents : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<NotificationEvent>().Any(e => e.State == EntityState.Added))
+                throw new DbUpdateException("simulated: the outbox table refused the row");
+            return ValueTask.FromResult(result);
+        }
     }
 
     // --- stubs: the scan path touches none of them without a photo ----------------------------------------------

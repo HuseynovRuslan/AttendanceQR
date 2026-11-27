@@ -1329,7 +1329,19 @@ public class AttendanceController : ControllerBase
         var notice = _outbox is null ? null
             : await _outbox.StageAsync(_db, NotificationEventKinds.CheckIn, record, nowUtc);
 
-        if (!await SaveCheckInAsync(record, ip))
+        var saved = await SaveCheckInAsync(record, ip);
+        if (!saved && notice is not null && _db.Entry(record).State == EntityState.Added)
+        {
+            // SaveCheckInAsync files every refused save as a duplicate. If the outbox row is what the database refused,
+            // that would cost the person their check-in for a notification — so once more without it: a genuine
+            // duplicate is refused again, anything the event caused is not.
+            _db.Entry(notice).State = EntityState.Detached;
+            notice = null;
+            saved = await SaveCheckInAsync(record, ip);
+            if (saved)
+                _logger.LogWarning("Check-in {RecordId}: saved without its notification event", record.Id);
+        }
+        if (!saved)
         {
             // Concurrent check-in for the same (EmployeeId, AttendanceDate) hit the unique
             // index. Detach the failed insert so the audit write below can persist cleanly.
@@ -1648,7 +1660,18 @@ public class AttendanceController : ControllerBase
         // Commits with the check-out (NotificationOutbox); nothing is written when nobody wants it.
         var notice = _outbox is null ? null
             : await _outbox.StageAsync(_db, NotificationEventKinds.CheckOut, record, nowUtc);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (notice is not null)
+        {
+            // The check-out must never depend on its notification: without the event the save is what it always was.
+            _logger.LogWarning(ex, "Check-out {RecordId}: saved without its notification event", record.Id);
+            _db.Entry(notice).State = EntityState.Detached;
+            notice = null;
+            await _db.SaveChangesAsync();
+        }
         if (notice is not null)
             _outbox!.Hint(_db.CurrentTenantId);
         await RecordProcessedScanAsync(clientScanId, employee.Id);

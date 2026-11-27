@@ -30,6 +30,11 @@ public class NotificationsController : ControllerBase
 {
     private const int DefaultPage = 25;
     private const int MaxPage = 50;
+    private const int UnreadCap = 99;
+
+    /// <summary>«Hamısını oxunmuş et» marks this many at a time, so a reader with a year of lines is many short
+    /// statements, not one that outlives the request.</summary>
+    private const int MarkBatch = 5000;
 
     private readonly AppDbContext _db;
     private readonly IMemoryCache _cache;
@@ -100,7 +105,10 @@ public class NotificationsController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
         var query = await VisibleAsync(ct);
-        return Ok(new { unread = await query.CountAsync(n => n.ReadAtUtc == null, ct) });
+        // Counted only as far as the badge can show («99+»): a company-wide reader at a large company collects tens of
+        // thousands of lines a day, and this runs every minute for every open panel.
+        var unread = await query.Where(n => n.ReadAtUtc == null).Take(UnreadCap + 1).CountAsync(ct);
+        return Ok(new { unread = Math.Min(unread, UnreadCap), more = unread > UnreadCap });
     }
 
     /// <summary>POST /api/notifications/{id}/read — one line read. Only the caller's own.</summary>
@@ -127,10 +135,19 @@ public class NotificationsController : ControllerBase
             query = query.Where(n => n.TypeKey == type);
 
         var now = DateTime.UtcNow;
-        int count;
+        // Only what was there when the reader pressed it: lines arriving meanwhile stay unread.
+        query = query.Where(n => n.CreatedAtUtc <= now);
+        var count = 0;
         if (_db.Database.IsRelational())
         {
-            count = await query.ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAtUtc, now), ct);
+            for (var round = 0; round < 400; round++)
+            {
+                var marked = await query.OrderBy(n => n.Id).Take(MarkBatch)
+                    .ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAtUtc, now), ct);
+                count += marked;
+                if (marked < MarkBatch)
+                    break;
+            }
         }
         else
         {
@@ -172,6 +189,21 @@ public class NotificationsController : ControllerBase
     /// <summary>PUT /api/notifications/preferences — saves one category's settings, whole.</summary>
     [HttpPut("preferences")]
     public async Task<IActionResult> SavePreferences([FromBody] NotificationPreferencesRequest request)
+    {
+        try
+        {
+            return await SavePreferencesAsync(request);
+        }
+        catch (DbUpdateException ex) when (Approvals.ChangeRequestDesk.UniqueViolation(ex) is not null)
+        {
+            // Two saves of a first-ever setting at once (a double tap, two tabs): the other one created the row this
+            // one tried to create. Once more, now finding it — the later save wins, as it does for any other edit.
+            _db.ChangeTracker.Clear();
+            return await SavePreferencesAsync(request);
+        }
+    }
+
+    private async Task<IActionResult> SavePreferencesAsync(NotificationPreferencesRequest request)
     {
         var ct = HttpContext.RequestAborted;
         var cat = request.Category ?? NotificationTypes.CategoryAttendance;

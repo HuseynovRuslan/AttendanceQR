@@ -77,6 +77,25 @@ public sealed class NotificationDispatcher
         if (events.Count == 0)
             return (DispatchOutcome.None, []);
 
+        // An event leased MaxAttempts times without ever finishing was taking its pass down with it (a crash, a kill) —
+        // it is given up here, where it cannot do that again, instead of being leased for ever.
+        var exhausted = events.Where(e => e.Attempts >= MaxAttempts).ToList();
+        foreach (var e in exhausted)
+        {
+            e.Status = NotificationEventStatus.Failed;
+            e.LastError ??= "Never finished: every pass that took it was interrupted";
+        }
+        if (exhausted.Count > 0)
+        {
+            _logger.LogError("Notifications: {Count} events given up after {Max} interrupted passes", exhausted.Count, MaxAttempts);
+            events = events.Except(exhausted).ToList();
+            if (events.Count == 0)
+            {
+                await db.SaveChangesAsync(ct);
+                return (new DispatchOutcome(0, 0, 0, 0, exhausted.Count), []);
+            }
+        }
+
         // The lease, written before any work: a second pass (a deploy's overlap) skips these until it runs out.
         foreach (var e in events)
         {
@@ -126,7 +145,7 @@ public sealed class NotificationDispatcher
                 e.LastError = null;
             }
             await db.SaveChangesAsync(ct);
-            return (new DispatchOutcome(events.Count, written, pushes, live.Count, 0), live);
+            return (new DispatchOutcome(events.Count, written, pushes, live.Count, exhausted.Count), live);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -151,7 +170,7 @@ public sealed class NotificationDispatcher
             await db.SaveChangesAsync(ct);
             _logger.LogError(ex, "Notifications: {Count} events not dispatched ({Failed} given up); retrying later",
                 events.Count, failed);
-            return (new DispatchOutcome(0, 0, 0, 0, events.Count), []);
+            return (new DispatchOutcome(0, 0, 0, 0, events.Count + exhausted.Count), []);
         }
     }
 
@@ -207,10 +226,24 @@ public sealed class NotificationDispatcher
 
         foreach (var e in events)
         {
+            // One event whose data trips the build costs that event, not the 299 others in its batch.
+            try
+            {
+                BuildOne(e);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Notifications: event {EventId} could not be built; skipped", e.Id);
+            }
+        }
+        return result;
+
+        void BuildOne(NotificationEvent e)
+        {
             if (!subjects.TryGetValue(e.SubjectEmployeeId, out var subject) || !IsTrackedStaff(subject))
-                continue;
+                return;
             if (e.AttendanceRecordId is not Guid recordId || !records.TryGetValue(recordId, out var record) || record.VoidedAtUtc != null)
-                continue;
+                return;
 
             var types = new List<(string Type, int? Minutes)>();
             if (e.Kind == NotificationEventKinds.CheckIn)
@@ -224,7 +257,7 @@ public sealed class NotificationDispatcher
                 types.Add((NotificationTypes.CheckOut, null));
             }
             if (types.Count == 0)
-                continue;
+                return;
 
             var home = subject.LocationId;
             var site = e.LocationId is Guid siteId && locations.TryGetValue(siteId, out var at) ? at.Name : null;
@@ -289,7 +322,6 @@ public sealed class NotificationDispatcher
                 }
             }
         }
-        return result;
     }
 
     /// <summary>
@@ -338,19 +370,34 @@ public sealed class NotificationDispatcher
         {
             if (e.AttendanceRecordId is not Guid id || !records.TryGetValue(id, out var record)
                 || !subjects.TryGetValue(record.EmployeeId, out var person)
-                || !locations.TryGetValue(person.LocationId, out var home)
                 || record.CheckInAtUtc is not DateTime checkIn)
+                continue;
+            // The hours the scan itself judged the arrival by: the branch it was made at (AttendanceController resolves
+            // the shift against the scanned location), so «gecikdi» never contradicts the record's own status for
+            // somebody who works off another branch's hours.
+            if (!locations.TryGetValue(record.LocationId, out var site) && !locations.TryGetValue(person.LocationId, out site))
                 continue;
 
             var day = record.AttendanceDate;
-            var shift = EffectiveShift.Resolve(person, plan.ScheduleFor(person.Id, day, person.ScheduleId, schedules), home);
+            int? late;
+            try
+            {
+                var shift = EffectiveShift.Resolve(person, plan.ScheduleFor(person.Id, day, person.ScheduleId, schedules), site);
             var dayOff =
                 holidays.Any(h => h.Date == day && (h.LocationId == null || h.LocationId == person.LocationId))
                 || leaves.Any(l => l.EmployeeId == person.Id && l.FromDate <= day && l.ToDate >= day);
             var earlier = stretches.TryGetValue((person.Id, day), out var same)
                           && same.Any(s => s.Id != record.Id && s.CheckInAtUtc < checkIn);
 
-            if (NotificationLateness.MinutesLate(shift, day, checkIn, _timeZone, dayOff, earlier) is int minutes)
+                late = NotificationLateness.MinutesLate(shift, day, checkIn, _timeZone, dayOff, earlier);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A shift that cannot be read costs this one «gecikdi», not the batch: the check-in line still goes.
+                _logger.LogError(ex, "Notifications: lateness of event {EventId} could not be judged", e.Id);
+                continue;
+            }
+            if (late is int minutes)
                 result[e.Id] = minutes;
         }
         return result;

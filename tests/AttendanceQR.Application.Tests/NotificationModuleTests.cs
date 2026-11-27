@@ -473,16 +473,34 @@ public class NotificationModuleTests
         return await new NotificationPush(NullLogger.Instance).DeliverAsync(db, () => notifier, configured, nowUtc);
     }
 
-    private static void Owed(AccessWorld w, Guid to, string type, DateTime atUtc, int count = 1)
+    /// <summary>Owed pushes, each about a different person unless <paramref name="about"/> names one.</summary>
+    private static void Owed(
+        AccessWorld w, Guid to, string type, DateTime atUtc, int count = 1, Guid? about = null, string? title = null, string? body = null)
     {
         using var db = w.Context(AccessWorld.TenantA);
         for (var i = 0; i < count; i++)
             db.NotificationDeliveries.Add(new NotificationDelivery
             {
-                RecipientEmployeeId = to, TypeKey = type, Title = "İşçi giriş etdi", Body = $"X işə giriş etdi.\nB1 · 09:0{i}",
-                Url = "/admin/employees/x", NextAttemptUtc = atUtc, CreatedAtUtc = atUtc.AddSeconds(i),
+                RecipientEmployeeId = to, TypeKey = type, Title = title ?? "İşçi giriş etdi", Body = body ?? $"X işə giriş etdi.\nB1 · 09:0{i}",
+                Url = $"/admin/employees/{about ?? Guid.NewGuid()}", NextAttemptUtc = atUtc, CreatedAtUtc = atUtc.AddSeconds(i),
             });
         db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task One_late_arrival_is_pushed_as_its_own_sentence_not_as_a_count()
+    {
+        using var w = new AccessWorld();
+        var elvin = Guid.NewGuid();
+        Owed(w, w.M1, NotificationTypes.CheckIn, At(9, 25), about: elvin, body: "Əliyev Elvin işə giriş etdi.\nB1 · 09:25");
+        Owed(w, w.M1, NotificationTypes.Late, At(9, 25), about: elvin, title: "İşçi gecikdi", body: "Əliyev Elvin işə 25 dəqiqə gecikdi.\nB1 · 09:25");
+        var push = new FakePush();
+
+        await DeliverAsync(w, push, At(9, 26));
+
+        var sent = Assert.Single(push.Sent);
+        Assert.Equal(("İşçi gecikdi", "Əliyev Elvin işə 25 dəqiqə gecikdi.\nB1 · 09:25", (string?)$"/admin/employees/{elvin}"), sent);
+        Assert.All(Pushes(w), d => Assert.Equal(NotificationDeliveryStatus.Digested, d.Status));
     }
 
     [Fact]
@@ -749,20 +767,208 @@ public class NotificationModuleTests
         Assert.NotEqual(NotificationsHub.Group(AccessWorld.TenantA, person), NotificationsHub.Group(AccessWorld.TenantB, person));
     }
 
+    // --- audit 27.11: each fix pinned by a test that failed before it ----------------------------------------------
+
+    [Fact]
+    public async Task A_manager_owed_one_push_is_not_kept_waiting_behind_an_admins_thousands()
+    {
+        using var w = new AccessWorld();
+        // The admin's 2 500 rows are all older than the manager's one: a batch of the oldest rows never reached it.
+        Owed(w, w.Admin1, NotificationTypes.CheckIn, At(9, 0), count: 2500);
+        Owed(w, w.M1, NotificationTypes.Late, At(9, 50));
+        var push = new FakePush();
+
+        await DeliverAsync(w, push, At(10, 0));
+
+        Assert.Equal(2, push.Sent.Count);
+        Assert.Contains(push.Sent, p => p.Body == "2500 yeni bildiriş: 2500 giriş");
+        Assert.Contains(push.Sent, p => p.Title == "İşçi giriş etdi");
+        Assert.DoesNotContain(Pushes(w), d => d.Status == NotificationDeliveryStatus.Pending);
+    }
+
+    [Fact]
+    public async Task A_pass_stopped_midway_keeps_what_it_already_sent_so_nothing_is_pushed_twice()
+    {
+        using var w = new AccessWorld();
+        Owed(w, w.Admin1, NotificationTypes.CheckIn, At(9, 0));
+        Owed(w, w.Admin2, NotificationTypes.CheckIn, At(9, 1));
+        using var stop = new CancellationTokenSource();
+        var push = new FakePush { CancelOnCall = 2, Cancel = stop };
+
+        using (var db = w.Context(AccessWorld.TenantA))
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                new NotificationPush(NullLogger.Instance).DeliverAsync(db, () => push, true, At(9, 2), stop.Token));
+
+        Assert.Equal(NotificationDeliveryStatus.Sent, Pushes(w).Single(d => d.RecipientEmployeeId == w.Admin1).Status);
+        // The next pass sends the one that was cut short — and only that one.
+        var again = new FakePush();
+        await DeliverAsync(w, again, At(9, 3));
+        Assert.Single(again.Sent);
+        Assert.All(Pushes(w), d => Assert.Equal(NotificationDeliveryStatus.Sent, d.Status));
+    }
+
+    [Fact]
+    public async Task A_slow_push_provider_ends_the_pass_at_its_budget_and_the_rest_wait_for_the_next()
+    {
+        using var w = new AccessWorld();
+        Owed(w, w.Admin1, NotificationTypes.CheckIn, At(9, 0));
+        Owed(w, w.Admin2, NotificationTypes.CheckIn, At(9, 1));
+        var clock = new SteppingClock();
+        var push = new FakePush { OnSend = () => clock.Advance(NotificationPush.PassBudget + TimeSpan.FromSeconds(1)) };
+
+        using (var db = w.Context(AccessWorld.TenantA))
+            await new NotificationPush(NullLogger.Instance, clock).DeliverAsync(db, () => push, true, At(9, 2));
+
+        Assert.Single(push.Sent);
+        Assert.Equal(NotificationDeliveryStatus.Pending, Pushes(w).Single(d => d.RecipientEmployeeId == w.Admin2).Status);
+    }
+
+    [Fact]
+    public async Task An_event_whose_passes_keep_dying_is_given_up_instead_of_being_leased_for_ever()
+    {
+        using var w = new AccessWorld();
+        Prefs(w, w.Admin1, [NotificationTypes.CheckIn]);
+        CheckIn(w, w.E1, At(9, 2));
+        CheckIn(w, w.E2, At(9, 3));
+        using (var db = w.Context(AccessWorld.TenantA))
+        {
+            // E1's event: leased MaxAttempts times, never finished (the process died each time).
+            var poisoned = db.NotificationEvents.Single(e => e.SubjectEmployeeId == w.E1);
+            poisoned.Attempts = NotificationDispatcher.MaxAttempts;
+            db.SaveChanges();
+        }
+
+        var (outcome, _) = await Dispatch(w, At(9, 5));
+
+        Assert.Equal((1, 1), (outcome.Events, outcome.Failed));
+        var events = w.Context(AccessWorld.TenantA).NotificationEvents.AsNoTracking().ToList();
+        Assert.Equal(NotificationEventStatus.Failed, events.Single(e => e.SubjectEmployeeId == w.E1).Status);
+        Assert.Equal(NotificationEventStatus.Done, events.Single(e => e.SubjectEmployeeId == w.E2).Status);
+        Assert.Equal(w.E2, Assert.Single(Lines(w)).SubjectEmployeeId);
+    }
+
+    [Fact]
+    public async Task Lateness_is_judged_by_the_hours_of_the_branch_the_scan_was_made_at_like_the_scan_itself()
+    {
+        using var w = new AccessWorld();
+        Shift(w, w.B1, new TimeOnly(9, 0), new TimeOnly(18, 0), grace: 15);    // E1's home
+        Shift(w, w.B2, new TimeOnly(10, 0), new TimeOnly(19, 0), grace: 15);   // where E1 worked today
+        Prefs(w, w.Admin1, [NotificationTypes.Late]);
+        using (var db = w.Context(AccessWorld.TenantA))
+        {
+            // 09:40 at B2: on time by B2's 10:00 (what the scan decided), 40 minutes late by home's 09:00.
+            var record = new AttendanceRecord
+            {
+                EmployeeId = w.E1, LocationId = w.B2, AttendanceDate = Monday, CheckInAtUtc = At(9, 40), Status = AttendanceStatus.OnTime,
+            };
+            db.AttendanceRecords.Add(record);
+            db.NotificationEvents.Add(new NotificationEvent
+            {
+                Kind = NotificationEventKinds.CheckIn, SubjectEmployeeId = w.E1, AttendanceRecordId = record.Id, LocationId = w.B2,
+                OccurredAtUtc = At(9, 40), CreatedAtUtc = At(9, 40), NextAttemptUtc = At(9, 40),
+            });
+            db.SaveChanges();
+        }
+
+        await Dispatch(w, At(9, 41));
+
+        Assert.Empty(Lines(w));
+    }
+
+    [Fact]
+    public async Task The_badge_count_stops_at_what_it_can_show()
+    {
+        using var w = new AccessWorld();
+        for (var i = 0; i < 150; i++)
+            Line(w, w.Admin1, w.B1, At(9, 0).AddSeconds(i));
+
+        var answer = Json(await Settings(w, w.Admin1).UnreadCount());
+
+        Assert.Equal(99, answer.GetProperty("unread").GetInt32());
+        Assert.True(answer.GetProperty("more").GetBoolean());
+        Assert.False(Json(await Settings(w, w.M1).UnreadCount()).GetProperty("more").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Two_first_saves_of_the_settings_at_once_are_not_a_server_error()
+    {
+        using var w = new AccessWorld();
+        var raced = new UniqueViolationOnce<NotificationPreference>();
+        var c = new NotificationsController(
+            w.Context(AccessWorld.TenantA, interceptor: raced), new MemoryCache(new MemoryCacheOptions()))
+        {
+            ControllerContext = Settings(w, w.Admin1).ControllerContext,
+        };
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(await c.SavePreferences(Request([NotificationTypes.CheckIn])));
+
+        Assert.True(result.StatusCode is null or 200);
+        Assert.True(raced.Fired);
+        Assert.Single(w.Context(AccessWorld.TenantA).NotificationPreferences.AsNoTracking());
+    }
+
+    [Fact]
+    public void The_outbox_row_stays_inert_no_unique_index_and_no_reference_but_its_company()
+    {
+        using var w = new AccessWorld();
+        var type = w.Context(AccessWorld.TenantA).Model.FindEntityType(typeof(NotificationEvent))!;
+
+        // What lets it ride in a check-in's save without ever being the reason that save fails.
+        Assert.DoesNotContain(type.GetIndexes(), i => i.IsUnique);
+        Assert.All(type.GetForeignKeys(), fk => Assert.Equal(typeof(Tenant), fk.PrincipalEntityType.ClrType));
+    }
+
+    private sealed class SteppingClock : TimeProvider
+    {
+        private long _ticks = 1;
+        public void Advance(TimeSpan by) => _ticks += by.Ticks;
+        public override long GetTimestamp() => _ticks;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    }
+
+    /// <summary>The first save that adds a <typeparamref name="T"/> fails as Postgres fails a duplicate key.</summary>
+    private sealed class UniqueViolationOnce<T> : SaveChangesInterceptor where T : class
+    {
+        public bool Fired { get; private set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!Fired && eventData.Context!.ChangeTracker.Entries<T>().Any(e => e.State == EntityState.Added))
+            {
+                Fired = true;
+                throw new DbUpdateException("simulated race",
+                    new Npgsql.PostgresException("duplicate key", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.UniqueViolation));
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     // --- fakes -----------------------------------------------------------------------------------------------------
 
     private sealed class FakePush : IPushNotifier
     {
         public int Reached { get; init; } = 1;
         public bool Throws { get; init; }
+        /// <summary>On this call (1-based) the pass is stopped (a deploy's SIGTERM) before the send.</summary>
+        public int CancelOnCall { get; init; }
+        public CancellationTokenSource? Cancel { get; init; }
+        public Action? OnSend { get; init; }
         public List<(string Title, string Body, string? Url)> Sent { get; } = [];
+        private int _calls;
 
         public Task<int> NotifyEmployeesAsync(
             IReadOnlyCollection<Guid> employeeIds, string title, string body, string? url, CancellationToken ct = default)
         {
+            if (++_calls == CancelOnCall && Cancel is not null)
+            {
+                Cancel.Cancel();
+                throw new OperationCanceledException(Cancel.Token);
+            }
             if (Throws)
                 throw new HttpRequestException("simulated push endpoint down");
             Sent.Add((title, body, url));
+            OnSend?.Invoke();
             return Task.FromResult(Reached);
         }
     }

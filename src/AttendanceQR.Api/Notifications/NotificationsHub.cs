@@ -129,6 +129,14 @@ public sealed class HubTickets
 public sealed class HubTicketAuthentication : AuthenticationHandler<AuthenticationSchemeOptions>
 {
     public const string SchemeName = "HubTicket";
+
+    /// <summary>
+    /// How long one live connection may stay open before the server closes it (MapHub's CloseOnAuthenticationExpiration)
+    /// and the client comes back with a new ticket. The ticket is issued only to a session the ordinary pipeline has just
+    /// checked — token version, active account, active company — so a session revoked meanwhile («hər yerdən çıxış»,
+    /// a PIN reset, a deactivation) stops hearing anything within this time, instead of for as long as a tab stays open.
+    /// </summary>
+    public static TimeSpan ConnectionLifetime { get; set; } = TimeSpan.FromMinutes(10);
     private readonly HubTickets _tickets;
 
     public HubTicketAuthentication(
@@ -146,7 +154,9 @@ public sealed class HubTicketAuthentication : AuthenticationHandler<Authenticati
 
         var identity = new ClaimsIdentity(
             [new Claim("sub", employeeId.ToString()), new Claim("tid", tenantId.ToString())], SchemeName, "sub", "role");
-        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
+        var properties = new AuthenticationProperties { ExpiresUtc = TimeProvider.GetUtcNow() + ConnectionLifetime };
+        return Task.FromResult(AuthenticateResult.Success(
+            new AuthenticationTicket(new ClaimsPrincipal(identity), properties, SchemeName)));
     }
 }
 

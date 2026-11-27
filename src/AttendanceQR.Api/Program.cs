@@ -800,6 +800,11 @@ app.MapMethods("/health", new[] { "GET", "HEAD" }, async (AppDbContext db, Cance
 }).AllowAnonymous();
 
 app.MapControllers();
-app.MapHub<AttendanceQR.Api.Notifications.NotificationsHub>(AttendanceQR.Api.Notifications.NotificationsHub.Path);
+// A live connection lives as long as its ticket's session (HubTicketAuthentication.ConnectionLifetime), then the server
+// closes it and the client reconnects with a fresh ticket — which re-checks the JWT (revoked, deactivated) on the way.
+if (int.TryParse(app.Configuration["Notifications:LiveConnectionMinutes"], out var liveMinutes) && liveMinutes is >= 1 and <= 120)
+    AttendanceQR.Api.Notifications.HubTicketAuthentication.ConnectionLifetime = TimeSpan.FromMinutes(liveMinutes);
+app.MapHub<AttendanceQR.Api.Notifications.NotificationsHub>(
+    AttendanceQR.Api.Notifications.NotificationsHub.Path, o => o.CloseOnAuthenticationExpiration = true);
 
 app.Run();

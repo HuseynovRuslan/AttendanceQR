@@ -33,9 +33,21 @@ public sealed class NotificationOutbox
     }
 
     private static string Key(Guid tenantId) => $"notif-wants:{tenantId:N}";
+    private static string GenerationKey(Guid tenantId) => $"notif-wants-gen:{tenantId:N}";
 
-    /// <summary>Drops the cached answer for a company — after somebody changed their settings.</summary>
-    public static void Forget(IMemoryCache cache, Guid tenantId) => cache.Remove(Key(tenantId));
+    private static long Generation(IMemoryCache cache, Guid tenantId) =>
+        cache.TryGetValue(GenerationKey(tenantId), out long g) ? g : 0;
+
+    /// <summary>
+    /// Drops the cached answer for a company — after somebody changed their settings. Also moves the company's
+    /// generation on, so a lookup that was already under way when the settings changed (and read them before) cannot
+    /// put its stale «nobody» back into the cache for the next 30 s.
+    /// </summary>
+    public static void Forget(IMemoryCache cache, Guid tenantId)
+    {
+        cache.Set(GenerationKey(tenantId), Generation(cache, tenantId) + 1);
+        cache.Remove(Key(tenantId));
+    }
 
     /// <summary>
     /// Adds the event to <paramref name="db"/>'s change (does not save). Returns it, or null when nobody in the company
@@ -76,9 +88,12 @@ public sealed class NotificationOutbox
     {
         if (_cache.TryGetValue(Key(tenantId), out bool wants))
             return wants;
+        var generation = Generation(_cache, tenantId);
         wants = await db.NotificationPreferences.AsNoTracking()
             .AnyAsync(p => p.Category == NotificationTypes.CategoryAttendance && p.EnabledTypes != "", ct);
-        _cache.Set(Key(tenantId), wants, WantsFor);
+        // Kept only if nobody changed their settings while the question was being asked.
+        if (Generation(_cache, tenantId) == generation)
+            _cache.Set(Key(tenantId), wants, WantsFor);
         return wants;
     }
 }
