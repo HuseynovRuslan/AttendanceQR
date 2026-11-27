@@ -252,6 +252,7 @@ builder.Services.AddHostedService<AttendanceQR.Api.DailyReport.TelegramUpdatesWo
 // people who switched the type on and may see the person's branch. Off the scan path: it never delays a check-in.
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<AttendanceQR.Api.Notifications.HubTickets>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.LiveConnections>();
 builder.Services.AddSingleton<AttendanceQR.Api.Notifications.INotificationHint, AttendanceQR.Api.Notifications.NotificationHint>();
 builder.Services.AddSingleton<AttendanceQR.Api.Notifications.NotificationOutbox>();
 builder.Services.AddSingleton<AttendanceQR.Api.Notifications.INotificationLive, AttendanceQR.Api.Notifications.SignalRNotificationLive>();
@@ -800,8 +801,9 @@ app.MapMethods("/health", new[] { "GET", "HEAD" }, async (AppDbContext db, Cance
 }).AllowAnonymous();
 
 app.MapControllers();
-// A live connection lives as long as its ticket's session (HubTicketAuthentication.ConnectionLifetime), then the server
-// closes it and the client reconnects with a fresh ticket — which re-checks the JWT (revoked, deactivated) on the way.
+// A live connection is closed the moment its session ends (LiveConnections, swept by NotificationWorker). Besides that,
+// after HubTicketAuthentication.ConnectionLifetime the server closes it anyway and the client reconnects with a fresh
+// ticket — which re-runs the whole JWT check. A backstop, not the revocation.
 if (int.TryParse(app.Configuration["Notifications:LiveConnectionMinutes"], out var liveMinutes) && liveMinutes is >= 1 and <= 120)
     AttendanceQR.Api.Notifications.HubTicketAuthentication.ConnectionLifetime = TimeSpan.FromMinutes(liveMinutes);
 app.MapHub<AttendanceQR.Api.Notifications.NotificationsHub>(

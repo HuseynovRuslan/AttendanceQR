@@ -86,7 +86,7 @@ public class NotificationsController : ControllerBase
             .Take(take + 1)
             .Select(n => new NotificationView(
                 n.Id, n.TypeKey, n.Title, n.Body, n.SubjectEmployeeId, n.SubjectName, n.LocationId, n.BranchName,
-                n.OccurredAtUtc, n.WasOffline, n.Minutes, n.Url, n.CreatedAtUtc, n.ReadAtUtc))
+                n.OccurredAtUtc, n.WasOffline, n.Minutes, n.Url, n.CreatedAtUtc, n.ReadAtUtc, n.EventId))
             .ToListAsync(ct);
 
         var more = page.Count > take;
@@ -99,7 +99,10 @@ public class NotificationsController : ControllerBase
         });
     }
 
-    /// <summary>GET /api/notifications/unread-count — the badge.</summary>
+    /// <summary>
+    /// GET /api/notifications/unread-count — the badge. It counts entries as the lists show them: a check-in and its
+    /// lateness are two lines about one scan and one entry (they share the event), so the badge says 1, not 2.
+    /// </summary>
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount()
     {
@@ -107,7 +110,11 @@ public class NotificationsController : ControllerBase
         var query = await VisibleAsync(ct);
         // Counted only as far as the badge can show («99+»): a company-wide reader at a large company collects tens of
         // thousands of lines a day, and this runs every minute for every open panel.
-        var unread = await query.Where(n => n.ReadAtUtc == null).Take(UnreadCap + 1).CountAsync(ct);
+        var unread = await query.Where(n => n.ReadAtUtc == null)
+            .Select(n => n.EventId ?? n.Id)
+            .Distinct()
+            .Take(UnreadCap + 1)
+            .CountAsync(ct);
         return Ok(new { unread = Math.Min(unread, UnreadCap), more = unread > UnreadCap });
     }
 
@@ -171,7 +178,14 @@ public class NotificationsController : ControllerBase
     {
         if (_tickets is null)
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "LiveUnavailable" });
-        return Ok(new { ticket = _tickets.Issue(_db.CurrentTenantId, Me), expiresInSeconds = (int)HubTickets.Lifetime.TotalSeconds });
+        // The JWT check that let this request in compared the token's version with the account's, so it is current.
+        if (!int.TryParse(User.FindFirst("tv")?.Value, out var tokenVersion))
+            return Unauthorized(new { error = "TokenMalformed" });
+        return Ok(new
+        {
+            ticket = _tickets.Issue(_db.CurrentTenantId, Me, tokenVersion),
+            expiresInSeconds = (int)HubTickets.Lifetime.TotalSeconds,
+        });
     }
 
     // --- settings ---------------------------------------------------------------------------------------------
@@ -351,4 +365,4 @@ public class NotificationsController : ControllerBase
 public sealed record NotificationView(
     Guid Id, string TypeKey, string Title, string Body, Guid? SubjectEmployeeId, string? SubjectName, Guid? LocationId,
     string? BranchName, DateTime OccurredAtUtc, bool WasOffline, int? Minutes, string? Url, DateTime CreatedAtUtc,
-    DateTime? ReadAtUtc);
+    DateTime? ReadAtUtc, Guid? EventId = null);

@@ -137,6 +137,17 @@ internal sealed class AccessWorld : IDisposable
         return db;
     }
 
+    /// <summary>A context whose company is whatever <paramref name="tenant"/> is resolved to — for code that resolves it
+    /// itself, the way the background workers do (scope → ITenantContext.Resolve → AppDbContext).</summary>
+    public AppDbContext Context(ITenantContext tenant)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_db, _root)
+            .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+        var db = new AppDbContext(options.Options, tenant, null);
+        _open.Add(db);
+        return db;
+    }
+
     /// <summary>The branch a person clocks in at — what the permission rules call their home.</summary>
     public Guid HomeOf(Guid employeeId) =>
         Context(TenantA).Employees.IgnoreQueryFilters().AsNoTracking().Single(e => e.Id == employeeId).LocationId;

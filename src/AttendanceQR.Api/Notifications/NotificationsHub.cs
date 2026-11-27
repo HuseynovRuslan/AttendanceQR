@@ -14,11 +14,12 @@ namespace AttendanceQR.Api.Notifications;
 /// The live channel of the notification module: an open admin panel hears its own new notifications the moment they
 /// are written, instead of on its next poll.
 ///
-/// Server → client only; the hub has no methods a client can call. A connection joins exactly one group, its own
-/// (company, person) — taken from the server-issued ticket, never from anything the client says — so nobody can
-/// listen to another person's or another company's notifications. It authenticates with a short-lived ticket
-/// (<see cref="HubTickets"/>), not the session JWT: a browser's WebSocket carries the credential in the URL, URLs end
-/// up in logs, and these JWTs live for years.
+/// Server → client only; the hub has no methods a client can call. A connection is registered under exactly one
+/// session — company, person, token version — taken from the server-issued ticket, never from anything the client says,
+/// so nobody can listen to another person's or another company's notifications, and a session that has ended hears
+/// nothing more (<see cref="LiveConnections"/>). It authenticates with a short-lived ticket (<see cref="HubTickets"/>),
+/// not the session JWT: a browser's WebSocket carries the credential in the URL, URLs end up in logs, and these JWTs live
+/// for years.
 /// </summary>
 [Authorize(AuthenticationSchemes = HubTicketAuthentication.SchemeName)]
 public sealed class NotificationsHub : Hub
@@ -28,45 +29,66 @@ public sealed class NotificationsHub : Hub
     /// <summary>The one event the client listens to.</summary>
     public const string Event = "notifications";
 
-    public static string Group(Guid tenantId, Guid employeeId) => $"notif:{tenantId:N}:{employeeId:N}";
+    private readonly LiveConnections _connections;
+
+    public NotificationsHub(LiveConnections connections) => _connections = connections;
 
     public override async Task OnConnectedAsync()
     {
         var user = Context.User;
         if (!Guid.TryParse(user?.FindFirstValue("tid"), out var tenantId)
-            || !Guid.TryParse(user?.FindFirstValue("sub"), out var employeeId))
+            || !Guid.TryParse(user?.FindFirstValue("sub"), out var employeeId)
+            || !int.TryParse(user?.FindFirstValue("tv"), out var tokenVersion))
         {
             Context.Abort();
             return;
         }
-        await Groups.AddToGroupAsync(Context.ConnectionId, Group(tenantId, employeeId));
+        var context = Context;
+        _connections.Add(context.ConnectionId, new LiveConnections.Session(tenantId, employeeId, tokenVersion), context.Abort);
         await base.OnConnectedAsync();
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        _connections.Remove(Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
     }
 }
 
 /// <summary>Sends live notifications to whoever has the panel open. Never throws: a dropped pop-up is found in the center.</summary>
 public interface INotificationLive
 {
-    Task SendAsync(Guid tenantId, IReadOnlyList<LiveNotification> items, CancellationToken ct = default);
+    /// <summary>
+    /// <paramref name="sessions"/>: each recipient with a valid session now and the token version it carries
+    /// (<see cref="LiveSessions.ReadAsync"/>, read just before this call). A recipient missing from it hears nothing,
+    /// and a connection opened under an older session is closed instead of being sent to.
+    /// </summary>
+    Task SendAsync(Guid tenantId, IReadOnlyList<LiveNotification> items, IReadOnlyDictionary<Guid, int> sessions, CancellationToken ct = default);
 }
 
 public sealed class SignalRNotificationLive : INotificationLive
 {
     private readonly IHubContext<NotificationsHub> _hub;
+    private readonly LiveConnections _connections;
     private readonly ILogger<SignalRNotificationLive> _logger;
 
-    public SignalRNotificationLive(IHubContext<NotificationsHub> hub, ILogger<SignalRNotificationLive> logger)
+    public SignalRNotificationLive(IHubContext<NotificationsHub> hub, LiveConnections connections, ILogger<SignalRNotificationLive> logger)
     {
         _hub = hub;
+        _connections = connections;
         _logger = logger;
     }
 
-    public async Task SendAsync(Guid tenantId, IReadOnlyList<LiveNotification> items, CancellationToken ct = default)
+    public async Task SendAsync(
+        Guid tenantId, IReadOnlyList<LiveNotification> items, IReadOnlyDictionary<Guid, int> sessions, CancellationToken ct = default)
     {
         foreach (var group in items.GroupBy(i => i.RecipientId))
         {
             try
             {
+                var to = _connections.Current(tenantId, group.Key, sessions.TryGetValue(group.Key, out var v) ? v : null);
+                if (to.Count == 0)
+                    continue;
                 // Only what the pop-up shows; the click target is re-checked by the screen it opens.
                 var payload = group.Select(i => new
                 {
@@ -79,9 +101,9 @@ public sealed class SignalRNotificationLive : INotificationLive
                     wasOffline = i.WasOffline,
                     minutes = i.Minutes,
                     url = i.Url,
+                    eventId = i.EventId,
                 }).ToList();
-                await _hub.Clients.Group(NotificationsHub.Group(tenantId, group.Key))
-                    .SendAsync(NotificationsHub.Event, new { items = payload }, ct);
+                await _hub.Clients.Clients(to).SendAsync(NotificationsHub.Event, new { items = payload }, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -104,20 +126,23 @@ public sealed class HubTickets
 
     public HubTickets(IMemoryCache cache) => _cache = cache;
 
-    public string Issue(Guid tenantId, Guid employeeId)
+    /// <summary><paramref name="tokenVersion"/>: the version of the session asking — the JWT check has just proven it
+    /// current. The connection is registered under it, and closed the moment it stops being current.</summary>
+    public string Issue(Guid tenantId, Guid employeeId, int tokenVersion)
     {
         var ticket = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        _cache.Set(Key(ticket), (tenantId, employeeId), Lifetime);
+        _cache.Set(Key(ticket), (tenantId, employeeId, tokenVersion), Lifetime);
         return ticket;
     }
 
-    public bool TryRead(string? ticket, out Guid tenantId, out Guid employeeId)
+    public bool TryRead(string? ticket, out Guid tenantId, out Guid employeeId, out int tokenVersion)
     {
         tenantId = employeeId = Guid.Empty;
+        tokenVersion = 0;
         if (string.IsNullOrEmpty(ticket) || ticket.Length > 100
-            || !_cache.TryGetValue(Key(ticket), out (Guid Tenant, Guid Employee) owner))
+            || !_cache.TryGetValue(Key(ticket), out (Guid Tenant, Guid Employee, int Version) owner))
             return false;
-        (tenantId, employeeId) = owner;
+        (tenantId, employeeId, tokenVersion) = owner;
         return true;
     }
 
@@ -132,11 +157,11 @@ public sealed class HubTicketAuthentication : AuthenticationHandler<Authenticati
 
     /// <summary>
     /// How long one live connection may stay open before the server closes it (MapHub's CloseOnAuthenticationExpiration)
-    /// and the client comes back with a new ticket. The ticket is issued only to a session the ordinary pipeline has just
-    /// checked — token version, active account, active company — so a session revoked meanwhile («hər yerdən çıxış»,
-    /// a PIN reset, a deactivation) stops hearing anything within this time, instead of for as long as a tab stays open.
+    /// and the client comes back with a new ticket, which re-runs the whole JWT check. A backstop only: a session that
+    /// ends is cut off at once by <see cref="LiveConnections"/> — nothing more is sent to it, and the sweep closes it within
+    /// seconds — so this is not how long a revoked session keeps listening.
     /// </summary>
-    public static TimeSpan ConnectionLifetime { get; set; } = TimeSpan.FromMinutes(10);
+    public static TimeSpan ConnectionLifetime { get; set; } = TimeSpan.FromMinutes(60);
     private readonly HubTickets _tickets;
 
     public HubTicketAuthentication(
@@ -149,11 +174,16 @@ public sealed class HubTicketAuthentication : AuthenticationHandler<Authenticati
         var header = Request.Headers.Authorization.ToString();
         if (string.IsNullOrEmpty(ticket) && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             ticket = header["Bearer ".Length..].Trim();
-        if (!_tickets.TryRead(ticket, out var tenantId, out var employeeId))
+        if (!_tickets.TryRead(ticket, out var tenantId, out var employeeId, out var tokenVersion))
             return Task.FromResult(AuthenticateResult.NoResult());
 
         var identity = new ClaimsIdentity(
-            [new Claim("sub", employeeId.ToString()), new Claim("tid", tenantId.ToString())], SchemeName, "sub", "role");
+            [
+                new Claim("sub", employeeId.ToString()),
+                new Claim("tid", tenantId.ToString()),
+                new Claim("tv", tokenVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            ],
+            SchemeName, "sub", "role");
         var properties = new AuthenticationProperties { ExpiresUtc = TimeProvider.GetUtcNow() + ConnectionLifetime };
         return Task.FromResult(AuthenticateResult.Success(
             new AuthenticationTicket(new ClaimsPrincipal(identity), properties, SchemeName)));

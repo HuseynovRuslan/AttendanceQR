@@ -15,9 +15,10 @@ public sealed record DispatchOutcome(int Events, int Notifications, int Pushes, 
 }
 
 /// <summary>A live pop-up owed to one person — sent over SignalR after the save (<see cref="INotificationLive"/>).</summary>
+/// <param name="EventId">The scan it is about: a check-in and its lateness share it, so the pop-up shows them as one.</param>
 public sealed record LiveNotification(
     Guid RecipientId, Guid? Id, string TypeKey, string Title, string Body, string? BranchName,
-    DateTime OccurredAtUtc, bool WasOffline, int? Minutes, string? Url);
+    DateTime OccurredAtUtc, bool WasOffline, int? Minutes, string? Url, Guid? EventId = null);
 
 /// <summary>
 /// Turns outbox events into notifications, for one company per call (the caller has resolved the tenant):
@@ -316,7 +317,7 @@ public sealed class NotificationDispatcher
                         }
                         : null;
                     var pop = wish.Preference.Web
-                        ? new LiveNotification(recipient, line?.Id, type, title, body, site, e.OccurredAtUtc, e.WasOffline, minutes, url)
+                        ? new LiveNotification(recipient, line?.Id, type, title, body, site, e.OccurredAtUtc, e.WasOffline, minutes, url, e.Id)
                         : null;
                     result.Add(new Built(e.Id, recipient, type, line, push, pop));
                 }

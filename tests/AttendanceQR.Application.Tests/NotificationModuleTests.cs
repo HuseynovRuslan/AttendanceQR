@@ -682,13 +682,15 @@ public class NotificationModuleTests
         Assert.Equal("attendance.check_in,attendance.late", stored.EnabledTypes);   // catalogue order, each once
     }
 
-    private static void Line(AccessWorld w, Guid to, Guid branch, DateTime createdUtc, string type = NotificationTypes.CheckIn, Guid? tenant = null)
+    private static void Line(
+        AccessWorld w, Guid to, Guid branch, DateTime createdUtc, string type = NotificationTypes.CheckIn, Guid? tenant = null,
+        Guid? eventId = null)
     {
         using var db = w.Context(tenant ?? AccessWorld.TenantA);
         db.Notifications.Add(new Notification
         {
             RecipientEmployeeId = to, TypeKey = type, Title = "İşçi giriş etdi", Body = "X işə giriş etdi.", LocationId = branch,
-            BranchName = "B", OccurredAtUtc = createdUtc, CreatedAtUtc = createdUtc,
+            BranchName = "B", OccurredAtUtc = createdUtc, CreatedAtUtc = createdUtc, EventId = eventId,
         });
         db.SaveChanges();
     }
@@ -758,13 +760,12 @@ public class NotificationModuleTests
     {
         var tickets = new HubTickets(new MemoryCache(new MemoryCacheOptions()));
         var person = Guid.NewGuid();
-        var ticket = tickets.Issue(AccessWorld.TenantA, person);
+        var ticket = tickets.Issue(AccessWorld.TenantA, person, tokenVersion: 3);
 
-        Assert.True(tickets.TryRead(ticket, out var tenant, out var who));
-        Assert.Equal((AccessWorld.TenantA, person), (tenant, who));
-        Assert.False(tickets.TryRead("not-a-ticket", out _, out _));
-        Assert.False(tickets.TryRead(null, out _, out _));
-        Assert.NotEqual(NotificationsHub.Group(AccessWorld.TenantA, person), NotificationsHub.Group(AccessWorld.TenantB, person));
+        Assert.True(tickets.TryRead(ticket, out var tenant, out var who, out var version));
+        Assert.Equal((AccessWorld.TenantA, person, 3), (tenant, who, version));
+        Assert.False(tickets.TryRead("not-a-ticket", out _, out _, out _));
+        Assert.False(tickets.TryRead(null, out _, out _, out _));
     }
 
     // --- audit 27.11: each fix pinned by a test that failed before it ----------------------------------------------
@@ -887,6 +888,27 @@ public class NotificationModuleTests
         Assert.Equal(99, answer.GetProperty("unread").GetInt32());
         Assert.True(answer.GetProperty("more").GetBoolean());
         Assert.False(Json(await Settings(w, w.M1).UnreadCount()).GetProperty("more").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_badge_counts_a_check_in_and_its_lateness_as_one_entry_and_the_list_says_which_scan_they_share()
+    {
+        using var w = new AccessWorld();
+        var scan = Guid.NewGuid();
+        Line(w, w.Admin1, w.B1, At(9, 25), NotificationTypes.CheckIn, eventId: scan);
+        Line(w, w.Admin1, w.B1, At(9, 25), NotificationTypes.Late, eventId: scan);
+        Line(w, w.Admin1, w.B2, At(9, 30), NotificationTypes.CheckIn, eventId: Guid.NewGuid());
+        Line(w, w.Admin1, w.B2, At(9, 31));   // an old line without its event stands alone
+
+        Assert.Equal(3, Json(await Settings(w, w.Admin1).UnreadCount()).GetProperty("unread").GetInt32());
+
+        var items = Json(await Settings(w, w.Admin1).List(null, null, null, null, 50)).GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, items.Count(i => i.GetProperty("eventId").ValueKind == JsonValueKind.String && i.GetProperty("eventId").GetGuid() == scan));
+
+        // Reading the lateness alone leaves the entry unread — its check-in still is.
+        var late = items.Single(i => i.GetProperty("typeKey").GetString() == NotificationTypes.Late).GetProperty("id").GetGuid();
+        await Settings(w, w.Admin1).MarkRead(late);
+        Assert.Equal(3, Json(await Settings(w, w.Admin1).UnreadCount()).GetProperty("unread").GetInt32());
     }
 
     [Fact]
