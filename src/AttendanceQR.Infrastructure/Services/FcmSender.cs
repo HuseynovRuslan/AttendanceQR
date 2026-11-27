@@ -117,7 +117,9 @@ public sealed class FirebaseFcmSender : IFcmSender
                 // A phone that was offline gets only the newest of a burst, not all of them at once.
                 CollapseKey = tag,
                 // One slot in the drawer: the next arrival replaces the previous one instead of stacking.
-                Notification = tag is null ? null : new AndroidNotification { Tag = tag },
+                // The SDK's EventTimestamp is not nullable: left alone it is sent as year 1, and the phone shows the
+                // push as «2032y» old, sorted under everything else. So it is always stated.
+                Notification = tag is null ? null : new AndroidNotification { Tag = tag, EventTimestamp = DateTime.UtcNow },
             },
         };
     }
