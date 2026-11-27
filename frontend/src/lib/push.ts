@@ -8,6 +8,7 @@ import { apiRequest, getToken } from '../api/client'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
 import { decodeJwt } from './jwt'
+import { receiveForegroundPush } from './foregroundPush'
 
 export interface PushKeyInfo {
   enabled: boolean
@@ -43,6 +44,11 @@ export function initNativePush(): void {
   void PushNotifications.addListener('pushNotificationActionPerformed', (a) => {
     const url = (a.notification.data as { url?: string } | undefined)?.url
     if (url) window.location.href = url
+  })
+  // A push that arrives while the app is open is handed to the app, not drawn by Android — the page shows it.
+  void PushNotifications.addListener('pushNotificationReceived', (n) => {
+    const url = (n.data as { url?: string } | undefined)?.url
+    receiveForegroundPush({ title: n.title ?? '', body: n.body ?? '', url: typeof url === 'string' ? url : null })
   })
   void PushNotifications.checkPermissions().then((p) => {
     nativePerm = p.receive === 'granted' ? 'granted' : p.receive === 'denied' ? 'denied' : 'default'
