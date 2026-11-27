@@ -3,6 +3,7 @@ using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Domain.Notifications;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
@@ -93,6 +94,10 @@ public class AttendanceController : ControllerBase
     // no alert — never an error, and never anything a scan waits on.
     private readonly IStaffAlertQueue? _alerts;
 
+    // The notification module's producer: an outbox row rides in the check-in's/check-out's own save. Optional, so the
+    // test rigs that build this controller by hand keep working (no outbox = no events).
+    private readonly Notifications.NotificationOutbox? _outbox;
+
     public AttendanceController(
         AppDbContext db,
         IQrTokenService qrTokenService,
@@ -107,8 +112,10 @@ public class AttendanceController : ControllerBase
         ILogger<AttendanceController> logger,
         ISummaryRebuildQueue? summaryRebuild = null,
         TimeProvider? clock = null,
-        IStaffAlertQueue? alerts = null)
+        IStaffAlertQueue? alerts = null,
+        Notifications.NotificationOutbox? outbox = null)
     {
+        _outbox = outbox;
         _summaryRebuild = summaryRebuild;
         _clock = clock ?? TimeProvider.System;
         _alerts = alerts;
@@ -1318,15 +1325,22 @@ public class AttendanceController : ControllerBase
             CheckInLongitude = longitude,
         };
         _db.AttendanceRecords.Add(record);
+        // Commits with the record or not at all (NotificationOutbox); nothing is written when nobody wants it.
+        var notice = _outbox is null ? null
+            : await _outbox.StageAsync(_db, NotificationEventKinds.CheckIn, record, nowUtc);
 
         if (!await SaveCheckInAsync(record, ip))
         {
             // Concurrent check-in for the same (EmployeeId, AttendanceDate) hit the unique
             // index. Detach the failed insert so the audit write below can persist cleanly.
             _db.Entry(record).State = EntityState.Detached;
+            if (notice is not null)
+                _db.Entry(notice).State = EntityState.Detached;
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "DuplicateCheckIn", ip);
             return Conflict(new { error = "DuplicateCheckIn" });
         }
+        if (notice is not null)
+            _outbox!.Hint(_db.CurrentTenantId);
 
         // Mark this scan processed so a replay of the same offline queue item doesn't check in twice.
         await RecordProcessedScanAsync(clientScanId, employee.Id);
@@ -1631,7 +1645,12 @@ public class AttendanceController : ControllerBase
             record.WasOffline = true;
             record.SubmittedAtUtc = submittedAtUtc;
         }
+        // Commits with the check-out (NotificationOutbox); nothing is written when nobody wants it.
+        var notice = _outbox is null ? null
+            : await _outbox.StageAsync(_db, NotificationEventKinds.CheckOut, record, nowUtc);
         await _db.SaveChangesAsync();
+        if (notice is not null)
+            _outbox!.Hint(_db.CurrentTenantId);
         await RecordProcessedScanAsync(clientScanId, employee.Id);
         RebuildIfPast(record.AttendanceDate);
 

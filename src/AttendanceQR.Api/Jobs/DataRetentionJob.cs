@@ -28,6 +28,14 @@ public sealed class DataRetentionJob : BackgroundService
     // covers any argument that ends up mattering, and keeps the table at a bounded steady state.
     private const int AuditLogDays = 365;
 
+    // The notification module. The center is a feed, not a record — the attendance itself is kept for ever in
+    // AttendanceRecords — so 90 days of lines; their push bookkeeping a month; a processed outbox event a week (it
+    // is only kept to explain a missing notification), a given-up one a month.
+    private const int NotificationDays = 90;
+    private const int NotificationDeliveryDays = 30;
+    private const int NotificationEventDoneDays = 7;
+    private const int NotificationEventFailedDays = 30;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DataRetentionJob> _logger;
     private readonly TimeZoneInfo _timeZone;
@@ -88,6 +96,16 @@ public sealed class DataRetentionJob : BackgroundService
                 var audits = await db.AuditLogs
                     .Where(a => a.CreatedAtUtc < now.AddDays(-AuditLogDays))
                     .ExecuteDeleteAsync(ct);
+                var deliveries = await db.NotificationDeliveries
+                    .Where(d => d.CreatedAtUtc < now.AddDays(-NotificationDeliveryDays))
+                    .ExecuteDeleteAsync(ct);
+                var lines = await db.Notifications
+                    .Where(n => n.CreatedAtUtc < now.AddDays(-NotificationDays))
+                    .ExecuteDeleteAsync(ct);
+                var events = await db.NotificationEvents
+                    .Where(e => (e.Status == Domain.Notifications.NotificationEventStatus.Done && e.CreatedAtUtc < now.AddDays(-NotificationEventDoneDays))
+                                || (e.Status == Domain.Notifications.NotificationEventStatus.Failed && e.CreatedAtUtc < now.AddDays(-NotificationEventFailedDays)))
+                    .ExecuteDeleteAsync(ct);
 
                 // Backstop for the durable photo queue: the worker's retry budget (~5h) removes rows
                 // itself, so anything a day old is unreachable garbage (e.g. rows orphaned by a bug).
@@ -100,10 +118,11 @@ public sealed class DataRetentionJob : BackgroundService
                         "DataRetentionJob: tenant {Tenant} dropped {Count} pending photo uploads older than 24h — these selfies are LOST",
                         tenantId, stalePhotos);
 
-                if (scans + notifications + audits > 0)
+                if (scans + notifications + audits + deliveries + lines + events > 0)
                     _logger.LogInformation(
-                        "DataRetentionJob: tenant {Tenant} pruned {Scans} processed scans, {Notifications} notifications, {Audits} audit rows",
-                        tenantId, scans, notifications, audits);
+                        "DataRetentionJob: tenant {Tenant} pruned {Scans} processed scans, {Notifications} notifications, {Audits} audit rows, "
+                        + "{Lines} center lines, {Deliveries} push deliveries, {Events} outbox events",
+                        tenantId, scans, notifications, audits, lines, deliveries, events);
             }
             catch (Exception ex)
             {

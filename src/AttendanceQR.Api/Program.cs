@@ -247,6 +247,16 @@ builder.Services.AddScoped<AttendanceQR.Api.DailyReport.DailyReportService>();
 builder.Services.AddHostedService<AttendanceQR.Api.DailyReport.DailyReportJob>();
 builder.Services.AddHostedService<AttendanceQR.Api.DailyReport.TelegramUpdatesWorker>();
 
+// The notification module (Api/Notifications): a check-in writes an outbox row in its own save (NotificationOutbox);
+// NotificationWorker turns it into center lines, pushes (through IPushNotifier above) and a live SignalR pop-up for the
+// people who switched the type on and may see the person's branch. Off the scan path: it never delays a check-in.
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.HubTickets>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.INotificationHint, AttendanceQR.Api.Notifications.NotificationHint>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.NotificationOutbox>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.INotificationLive, AttendanceQR.Api.Notifications.SignalRNotificationLive>();
+builder.Services.AddHostedService<NotificationWorker>();
+
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");
@@ -393,7 +403,11 @@ builder.Services
                     context.HttpContext.Items[TemporaryPinGate.ItemKey] = true;
             }
         };
-    });
+    })
+    // The live notification channel authenticates by a short-lived ticket, never the long-lived session JWT
+    // (a WebSocket carries it in the URL). See NotificationsHub / HubTickets.
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AttendanceQR.Api.Notifications.HubTicketAuthentication>(
+        AttendanceQR.Api.Notifications.HubTicketAuthentication.Scheme, _ => { });
 builder.Services.AddAuthorization();
 
 // CORS: the SPA calls the API cross-origin. Every tenant lives at its own <slug>.qrlog.az subdomain,
@@ -786,5 +800,6 @@ app.MapMethods("/health", new[] { "GET", "HEAD" }, async (AppDbContext db, Cance
 }).AllowAnonymous();
 
 app.MapControllers();
+app.MapHub<AttendanceQR.Api.Notifications.NotificationsHub>(AttendanceQR.Api.Notifications.NotificationsHub.Path);
 
 app.Run();

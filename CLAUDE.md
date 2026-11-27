@@ -77,8 +77,10 @@ around it. Adding a person goes through `NewEmployee` on both paths, the desk an
 **A value in `.env` alone reaches nothing.** Compose only passes variables named in the service's
 `environment:` block. Add it in both places.
 
-**Never reintroduce:** a lateness ("Gecikmə") display — removed on purpose, every employee has their
-own hours; the Sora font — it has no Azerbaijani `ə`; a single-use QR nonce — it breaks the printed
+**Never reintroduce:** a lateness ("Gecikmə") display measured against the branch's general hours — removed on
+purpose, every employee has their own hours. The one sanctioned lateness is the opt-in «İşçi gecikdi»
+notification (owner's decision, 26.11.2026), judged by the person's OWN shift for the day and never for a flexible
+schedule, holiday, leave or rest day — `NotificationLateness`, the only place it is decided; the Sora font — it has no Azerbaijani `ə`; a single-use QR nonce — it breaks the printed
 poster; a free-text position input — job titles come from the `JobPositions` catalogue.
 
 ## Working on it
