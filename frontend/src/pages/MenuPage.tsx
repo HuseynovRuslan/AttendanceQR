@@ -23,12 +23,13 @@ import { InstallAppCard } from '../components/InstallAppCard'
 import { OfflineScanHistory } from '../components/OfflineScanHistory'
 import { AccountSwitcherSheet } from '../components/AccountSwitcherSheet'
 import { PinChangeSheet } from '../components/PinChangeSheet'
-import { PushToggle } from '../components/PushToggle'
 import {
+  IconBell,
   IconCamera,
   IconChart,
   IconCheck,
   IconChevronDown,
+  IconChevronRight,
   IconClock,
   IconKey,
   IconLogout,
@@ -265,6 +266,9 @@ export function MenuPage() {
         {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
+        {/* This device's push and, for whoever may see others' attendance, which check-ins, check-outs and late
+            arrivals they hear about — a page of its own, no longer a faint line under the menu. */}
+        <MenuRow to="/menu/notifications" Icon={IconBell} label="Bildiriş ayarları" />
         {/* Per-tenant flag: a company that switches the assistant off must not even see the row. */}
         {assistantOn && <MenuRow to="/help" Icon={IconSend} label="Süni intellekt köməkçisi" />}
         {/* Ayın işçisi modulu hələlik deaktivdir. */}
@@ -283,17 +287,6 @@ export function MenuPage() {
           <MenuRow to="/services/meydan" Icon={IconQr} label="PRIZMA — müsabiqələrə giriş" />
         </div>
       </div>
-
-      {/* Notifications carry the announcements and the checkout reminder, so turning them off should
-          be possible but never a casual tap. */}
-      <details>
-        <summary className="cursor-pointer list-none py-2 text-center text-sm text-slate-400">
-          Bildiriş ayarları
-        </summary>
-        <div className="mt-1 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-          <PushToggle />
-        </div>
-      </details>
 
       <button
         onClick={logout}
@@ -369,11 +362,13 @@ function MenuRow({
   label: string
 }) {
   return (
-    <Link to={to} className="flex items-center gap-3 p-4 transition active:bg-slate-50">
+    <Link to={to} className="flex min-h-14 items-center gap-3 p-4 transition active:bg-slate-50">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-        <Icon className="h-5 w-5" />
+        <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
-      <span className="font-semibold">{label}</span>
+      <span className="min-w-0 flex-1 font-semibold">{label}</span>
+      {/* Every row goes somewhere; the chevron says so, the same on each. */}
+      <IconChevronRight className="h-5 w-5 shrink-0 text-slate-300" aria-hidden="true" />
     </Link>
   )
 }

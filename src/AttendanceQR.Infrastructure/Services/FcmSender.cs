@@ -58,13 +58,7 @@ public sealed class FirebaseFcmSender : IFcmSender
     {
         if (_messaging is null) return PushSendResult.NotConfigured; // not configured — no-op, keep the row
 
-        var message = new Message
-        {
-            Token = token,
-            Notification = new Notification { Title = title, Body = body },
-            Data = url is null ? null : new Dictionary<string, string> { ["url"] = url },
-            Android = new AndroidConfig { Priority = Priority.High },
-        };
+        var message = BuildMessage(token, title, body, url);
         try
         {
             await _messaging.SendAsync(message, ct);
@@ -107,4 +101,36 @@ public sealed class FirebaseFcmSender : IFcmSender
             _ => PushSendResult.Rejected,
         },
     };
+
+    /// <summary>The FCM message for one device. Public so the drawer behaviour below is pinned by a test.</summary>
+    public static Message BuildMessage(string token, string title, string body, string? url)
+    {
+        var tag = AndroidTag(url);
+        return new Message
+        {
+            Token = token,
+            Notification = new Notification { Title = title, Body = body },
+            Data = url is null ? null : new Dictionary<string, string> { ["url"] = url },
+            Android = new AndroidConfig
+            {
+                Priority = Priority.High,
+                // A phone that was offline gets only the newest of a burst, not all of them at once.
+                CollapseKey = tag,
+                // One slot in the drawer: the next arrival replaces the previous one instead of stacking.
+                Notification = tag is null ? null : new AndroidNotification { Tag = tag },
+            },
+        };
+    }
+
+    /// <summary>
+    /// The drawer slot of a push on the Android app — the topic the service worker gives the same push on the web
+    /// (frontend/public/sw.js pushTag). The attendance feed (someone checked in / out / was late, or its summary: the
+    /// pushes that open a person or the center) is one slot, so a burst of arrivals replaces itself instead of piling up,
+    /// and never replaces anything else. Every other push keeps no tag — each its own notification, as before.
+    /// </summary>
+    public static string? AndroidTag(string? url) =>
+        url is not null && (url.StartsWith("/admin/notifications", StringComparison.Ordinal)
+                            || url.StartsWith("/admin/employees/", StringComparison.Ordinal))
+            ? "qrlog-attendance"
+            : null;
 }

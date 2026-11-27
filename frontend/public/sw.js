@@ -122,6 +122,18 @@ self.addEventListener('fetch', (event) => {
  * The server sends {title, body, url} (see WebPushSender). Used for the
  * "you forgot to check out" reminder — the one nudge that reaches an employee
  * who has already left the building. */
+/* One notification per topic: a second one of a topic replaces the first rather than stacking.
+ * The attendance feed (someone checked in / out / was late, or its summary — the notification module's pushes, which
+ * open a person's profile or the center) is a topic of its own: a burst of arrivals replaces the previous arrival, and
+ * never anything else on the screen — not the person's own check-out reminder, and not a staff alert («X cannot clock
+ * in»), which arrives at exactly the hour the arrivals do. Everything else keeps the one shared topic it always had. */
+function pushTag(data) {
+  if (data && typeof data.tag === 'string' && data.tag) return data.tag
+  const url = (data && data.url) || ''
+  if (url.startsWith('/admin/notifications') || url.startsWith('/admin/employees/')) return 'qrlog-attendance'
+  return 'qrlog-checkout'
+}
+
 self.addEventListener('push', (event) => {
   let data = {}
   try {
@@ -135,8 +147,7 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      // One notification per topic: a second reminder replaces the first rather than stacking.
-      tag: 'qrlog-checkout',
+      tag: pushTag(data),
       renotify: true,
       data: { url: data.url || '/' },
     }),

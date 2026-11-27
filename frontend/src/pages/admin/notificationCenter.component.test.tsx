@@ -1,0 +1,209 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { NotificationCenterPage } from './NotificationCenterPage'
+import type { LiveListener } from '../../lib/notificationHub'
+
+/**
+ * «Bildirişlər»: newest first by company day, unread marked, read-all, a click that reads and opens the person, the
+ * server's pages by cursor, new lines arriving live at the top, and a refetch after the live channel reconnects.
+ */
+
+const net = vi.hoisted(() => ({
+  pages: {} as Record<string, { items: unknown[]; nextCursor: string | null }>,
+  calls: [] as string[],
+  listener: null as LiveListener | null,
+  unread: 0,
+  readAllStatus: 200,
+}))
+
+vi.mock('../../api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/client')>()),
+  apiRequest: vi.fn(async (path: string, options?: { method?: string }) => {
+    net.calls.push(`${options?.method ?? 'GET'} ${path}`)
+    if (path.startsWith('/api/notifications/preferences')) return { status: 200, data: { branches: [] } }
+    if (path.startsWith('/api/notifications/read-all')) return net.readAllStatus === 200 ? { status: 200, data: { marked: 2 } } : { status: net.readAllStatus, data: null }
+    if (path.startsWith('/api/notifications/unread-count')) return { status: 200, data: { unread: net.unread, more: false } }
+    if (path.match(/^\/api\/notifications\/[^/]+\/read$/)) return { status: 200, data: {} }
+    if (path.startsWith('/api/notifications')) {
+      const cursor = new URLSearchParams(path.split('?')[1] ?? '').get('cursor') ?? ''
+      return { status: 200, data: net.pages[cursor] ?? { items: [], nextCursor: null } }
+    }
+    return { status: 404, data: null }
+  }),
+}))
+vi.mock('../../lib/notificationHub', () => ({
+  subscribeLive: (l: LiveListener) => {
+    net.listener = l
+    return () => { net.listener = null }
+  },
+}))
+
+const line = (id: string, over: Record<string, unknown> = {}) => ({
+  id, typeKey: 'attendance.check_in', title: 'İşçi giriş etdi', body: `${id} işə giriş etdi.`, subjectEmployeeId: 'e1',
+  subjectName: id, locationId: 'b1', branchName: 'Ramana', occurredAtUtc: '2026-11-24T05:02:00Z', wasOffline: false,
+  minutes: null, url: '/admin/employees/e1', createdAtUtc: new Date().toISOString(), readAtUtc: null, ...over,
+})
+
+beforeEach(() => {
+  net.pages = {}
+  net.calls = []
+  net.listener = null
+  net.unread = 0
+  net.readAllStatus = 200
+})
+afterEach(() => cleanup())
+
+function page() {
+  render(
+    <MemoryRouter initialEntries={['/admin/notifications']}>
+      <Routes>
+        <Route path="/admin/notifications" element={<NotificationCenterPage />} />
+        <Route path="/admin/employees/:id" element={<div>İşçi profili</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('«Bildirişlər» center', () => {
+  it('lists today under «Bu gün», tells read from unread, and reads all', async () => {
+    net.pages[''] = {
+      items: [line('Əliyev Elvin'), line('Quliyeva Aynur', { readAtUtc: new Date().toISOString(), typeKey: 'attendance.late', title: 'İşçi gecikdi' })],
+      nextCursor: null,
+    }
+    page()
+    const today = await screen.findByRole('region', { name: 'Bu gün' })
+    const rows = within(today).getAllByRole('button')
+    expect(rows[0].getAttribute('aria-label')).toContain('oxunmayıb')
+    expect(rows[1].getAttribute('aria-label')).not.toContain('oxunmayıb')
+    expect(rows[1].getAttribute('aria-label')).toContain('Gecikmə')
+
+    fireEvent.click(screen.getByRole('button', { name: /Hamısını oxunmuş et/ }))
+    await waitFor(() => expect(net.calls).toContain('POST /api/notifications/read-all'))
+    await waitFor(() => expect(within(today).getAllByRole('button')[0].getAttribute('aria-label')).not.toContain('oxunmayıb'))
+  })
+
+  it('opens the person on a click and marks that line read', async () => {
+    net.pages[''] = { items: [line('Əliyev Elvin', { id: 'n1' })], nextCursor: null }
+    page()
+    fireEvent.click(await screen.findByRole('button', { name: /Əliyev Elvin işə giriş etdi/ }))
+    await screen.findByText('İşçi profili')
+    expect(net.calls).toContain('POST /api/notifications/n1/read')
+  })
+
+  it('pages by the server cursor and never repeats a line', async () => {
+    net.pages[''] = { items: [line('a'), line('b')], nextCursor: 'c1' }
+    net.pages['c1'] = { items: [line('b'), line('c')], nextCursor: null }
+    page()
+    fireEvent.click(await screen.findByRole('button', { name: 'Daha çox göstər' }))
+    await screen.findByRole('button', { name: /c işə giriş etdi/ })
+    expect(screen.getAllByRole('button', { name: /işə giriş etdi/ })).toHaveLength(3)
+    expect(screen.queryByRole('button', { name: 'Daha çox göstər' })).toBeNull()
+  })
+
+  it('puts a live line on top and fetches again after a reconnect', async () => {
+    net.pages[''] = { items: [line('köhnə')], nextCursor: null }
+    page()
+    await screen.findByRole('button', { name: /köhnə işə giriş etdi/ })
+
+    act(() => {
+      net.listener?.onItems?.([{ id: 'live1', typeKey: 'attendance.check_out', title: 'İşçi çıxış etdi', body: 'Yeni İşçi işdən çıxış etdi.',
+        branchName: 'Ramana', occurredAtUtc: new Date().toISOString(), wasOffline: false, minutes: null, url: '/admin/employees/e2' }])
+    })
+    const first = within(await screen.findByRole('region', { name: 'Bu gün' })).getAllByRole('button')[0]
+    expect(first.getAttribute('aria-label')).toContain('Yeni İşçi işdən çıxış etdi')
+
+    const before = net.calls.filter((c) => c.startsWith('GET /api/notifications?')).length
+    act(() => net.listener?.onReconnected?.())
+    await waitFor(() => expect(net.calls.filter((c) => c.startsWith('GET /api/notifications?')).length).toBe(before + 1))
+  })
+
+  it('says what to do when there is nothing yet', async () => {
+    page()
+    await screen.findByText('Hələ bildiriş yoxdur')
+    const links = screen.getAllByRole('link', { name: 'Bildiriş ayarları' })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links.every((a) => a.getAttribute('href') === '/menu/notifications')).toBe(true)
+  })
+  it('offers «read all» when the unread lines are further back than the first page, and says so when it fails', async () => {
+    net.pages[''] = { items: [line('oxunub', { readAtUtc: new Date().toISOString() })], nextCursor: 'c1' }
+    net.unread = 40
+    net.readAllStatus = 500
+    page()
+    const readAll = await screen.findByRole('button', { name: /Hamısını oxunmuş et/ })
+    await waitFor(() => expect((readAll as HTMLButtonElement).disabled).toBe(false))
+
+    fireEvent.click(readAll)
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Oxunmuş kimi qeyd olunmadı/)
+  })
+
+  it('shows the sentence once, with its type in the accessible name rather than in a second bold line', async () => {
+    net.pages[''] = { items: [line('Əliyev Elvin', { typeKey: 'attendance.late', title: 'İşçi gecikdi', body: 'Əliyev Elvin işə 25 dəqiqə gecikdi.', minutes: 25 })], nextCursor: null }
+    page()
+    const row = await screen.findByRole('button', { name: /Gecikmə: Əliyev Elvin işə 25 dəqiqə gecikdi/ })
+    expect(within(row).queryByText('İşçi gecikdi')).toBeNull()
+    expect(within(row).getByText('Əliyev Elvin işə 25 dəqiqə gecikdi.')).toBeTruthy()
+  })
+
+  it('shows a check-in and its lateness as one entry, led by the lateness, and reads both on a click', async () => {
+    net.pages[''] = {
+      items: [
+        line('Əliyev Elvin', { id: 'in1', eventId: 'ev1' }),
+        line('Quliyeva Aynur', { id: 'in2', eventId: 'ev2' }),
+        line('Əliyev Elvin', { id: 'late1', eventId: 'ev1', typeKey: 'attendance.late', title: 'İşçi gecikdi', body: 'Əliyev Elvin işə 25 dəqiqə gecikdi.', minutes: 25 }),
+      ],
+      nextCursor: null,
+    }
+    page()
+    const today = await screen.findByRole('region', { name: 'Bu gün' })
+    const rows = within(today).getAllByRole('button')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].getAttribute('aria-label')).toMatch(/^Giriş və Gecikmə: Əliyev Elvin işə 25 dəqiqə gecikdi/)
+
+    fireEvent.click(rows[0])
+    await screen.findByText('İşçi profili')
+    expect(net.calls).toContain('POST /api/notifications/in1/read')
+    expect(net.calls).toContain('POST /api/notifications/late1/read')
+    expect(net.calls).not.toContain('POST /api/notifications/in2/read')
+  })
+
+  it('keeps a lateness alone when only it is there — the type filter decides the lines, not the grouping', async () => {
+    net.pages[''] = {
+      items: [line('Əliyev Elvin', { id: 'late1', eventId: 'ev1', typeKey: 'attendance.late', body: 'Əliyev Elvin işə 25 dəqiqə gecikdi.' })],
+      nextCursor: null,
+    }
+    page()
+    fireEvent.click(await screen.findByRole('button', { name: 'Gecikmə' }))
+    await waitFor(() => expect(net.calls.some((c) => c.includes('type=attendance.late'))).toBe(true))
+    const rows = within(await screen.findByRole('region', { name: 'Bu gün' })).getAllByRole('button')
+    expect(rows[0].getAttribute('aria-label')).toMatch(/^Gecikmə: /)
+  })
+
+  it('filters to unread from the server, counts entries, and says when there are none left', async () => {
+    net.pages[''] = { items: [], nextCursor: null }
+    net.unread = 3
+    page()
+    const toggle = await screen.findByRole('button', { name: /Oxunmayıb/ })
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    await waitFor(() => expect(toggle.textContent).toContain('3'))
+
+    net.unread = 0
+    fireEvent.click(toggle)
+    await waitFor(() => expect(net.calls.some((c) => c.startsWith('GET /api/notifications?') && c.includes('unread=true'))).toBe(true))
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    await screen.findByText('Oxunmamış bildiriş yoxdur')
+    fireEvent.click(screen.getByRole('button', { name: 'Hamısını göstər' }))
+    await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('false'))
+  })
+
+  it('opens the settings from a button with an icon, not a link inside the sentence', async () => {
+    net.pages[''] = { items: [line('a')], nextCursor: null }
+    page()
+    const settings = await screen.findByRole('link', { name: 'Bildiriş ayarları' })
+    expect(settings.className).toContain('btn')
+    expect(settings.querySelector('svg')).not.toBeNull()
+    expect(settings.closest('p')).toBeNull()
+  })
+})
+

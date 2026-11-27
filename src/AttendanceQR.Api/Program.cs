@@ -249,6 +249,17 @@ builder.Services.AddScoped<AttendanceQR.Api.DailyReport.DailyReportService>();
 builder.Services.AddHostedService<AttendanceQR.Api.DailyReport.DailyReportJob>();
 builder.Services.AddHostedService<AttendanceQR.Api.DailyReport.TelegramUpdatesWorker>();
 
+// The notification module (Api/Notifications): a check-in writes an outbox row in its own save (NotificationOutbox);
+// NotificationWorker turns it into center lines, pushes (through IPushNotifier above) and a live SignalR pop-up for the
+// people who switched the type on and may see the person's branch. Off the scan path: it never delays a check-in.
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.HubTickets>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.LiveConnections>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.INotificationHint, AttendanceQR.Api.Notifications.NotificationHint>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.NotificationOutbox>();
+builder.Services.AddSingleton<AttendanceQR.Api.Notifications.INotificationLive, AttendanceQR.Api.Notifications.SignalRNotificationLive>();
+builder.Services.AddHostedService<NotificationWorker>();
+
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");
@@ -395,7 +406,11 @@ builder.Services
                     context.HttpContext.Items[TemporaryPinGate.ItemKey] = true;
             }
         };
-    });
+    })
+    // The live notification channel authenticates by a short-lived ticket, never the long-lived session JWT
+    // (a WebSocket carries it in the URL). See NotificationsHub / HubTickets.
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AttendanceQR.Api.Notifications.HubTicketAuthentication>(
+        AttendanceQR.Api.Notifications.HubTicketAuthentication.SchemeName, _ => { });
 builder.Services.AddAuthorization();
 
 // CORS: the SPA calls the API cross-origin. Every tenant lives at its own <slug>.qrlog.az subdomain,
@@ -788,5 +803,12 @@ app.MapMethods("/health", new[] { "GET", "HEAD" }, async (AppDbContext db, Cance
 }).AllowAnonymous();
 
 app.MapControllers();
+// A live connection is closed the moment its session ends (LiveConnections, swept by NotificationWorker). Besides that,
+// after HubTicketAuthentication.ConnectionLifetime the server closes it anyway and the client reconnects with a fresh
+// ticket — which re-runs the whole JWT check. A backstop, not the revocation.
+if (int.TryParse(app.Configuration["Notifications:LiveConnectionMinutes"], out var liveMinutes) && liveMinutes is >= 1 and <= 120)
+    AttendanceQR.Api.Notifications.HubTicketAuthentication.ConnectionLifetime = TimeSpan.FromMinutes(liveMinutes);
+app.MapHub<AttendanceQR.Api.Notifications.NotificationsHub>(
+    AttendanceQR.Api.Notifications.NotificationsHub.Path, o => o.CloseOnAuthenticationExpiration = true);
 
 app.Run();

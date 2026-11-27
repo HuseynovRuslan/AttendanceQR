@@ -102,6 +102,12 @@ public class AppDbContext : DbContext
     public DbSet<EquipmentRecord> EquipmentRecords => Set<EquipmentRecord>();
     public DbSet<DailyReportRecipient> DailyReportRecipients => Set<DailyReportRecipient>();
     public DbSet<DailyReportDelivery> DailyReportDeliveries => Set<DailyReportDelivery>();
+    // The notification module (Api/Notifications): outbox, center, push deliveries, settings.
+    public DbSet<NotificationEvent> NotificationEvents => Set<NotificationEvent>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+    public DbSet<NotificationBranchPreference> NotificationBranchPreferences => Set<NotificationBranchPreference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -140,6 +146,8 @@ public class AppDbContext : DbContext
             typeof(AuthzShadowEvent), typeof(PresenceCheck),
             typeof(ChangeRequest), typeof(ChangeRequestEvent), typeof(ApprovalArea), typeof(ApproverSubstitution),
             typeof(DailyReportRecipient), typeof(DailyReportDelivery),
+            typeof(NotificationEvent), typeof(Notification), typeof(NotificationDelivery),
+            typeof(NotificationPreference), typeof(NotificationBranchPreference),
         };
         foreach (var t in tenantScoped)
         {
@@ -234,6 +242,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PushSubscription>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         // The push endpoint is globally unique — one row per browser; re-subscribing updates that row.
         modelBuilder.Entity<PushSubscription>().HasIndex(p => p.Endpoint).IsUnique();
+        // Every push looks a person's devices up by EmployeeId (PushNotifier) — at a few thousand subscriptions
+        // that was a scan per send.
+        modelBuilder.Entity<PushSubscription>().HasIndex(p => new { p.TenantId, p.EmployeeId });
         modelBuilder.Entity<EmployeeNotification>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         // One reminder of each kind per employee per day. The sweep skips what is already on record
         // before inserting (ReminderJob); this index is the guard for two sweeps racing, so the same
@@ -308,6 +319,11 @@ public class AppDbContext : DbContext
         // Daily management report — recipients and what was sent to them (DailyReportConfiguration).
         modelBuilder.Entity<DailyReportRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DailyReportDelivery>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<NotificationEvent>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Notification>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<NotificationDelivery>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<NotificationPreference>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<NotificationBranchPreference>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
     }
 
     // FieldLimits.Enforce: a value longer (or larger) than its column is refused here, as a FieldLimitException,

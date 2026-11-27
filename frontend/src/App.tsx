@@ -27,6 +27,7 @@ import { PrivacyPage } from './pages/PrivacyPage'
 import { HelpChatPage } from './pages/HelpChatPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { MenuPage } from './pages/MenuPage'
+import { NotificationSettingsPage } from './pages/NotificationSettingsPage'
 
 // The employee pages above are imported eagerly on purpose: they are the whole app for almost
 // everyone who opens it, and the ScanPage component especially must render instantly (its pre-scan
@@ -44,6 +45,7 @@ const KioskPage = lazy(() => import('./pages/KioskPage').then(m => ({ default: m
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const TodayPage = lazy(() => import('./pages/admin/TodayPage').then(m => ({ default: m.TodayPage })))
+const NotificationCenterPage = lazy(() => import('./pages/admin/NotificationCenterPage').then(m => ({ default: m.NotificationCenterPage })))
 const TasksPage = lazy(() => import('./pages/admin/TasksPage').then(m => ({ default: m.TasksPage })))
 const GroupBoardPage = lazy(() => import('./pages/hq/GroupBoardPage').then(m => ({ default: m.GroupBoardPage })))
 const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ default: m.PayrollPage })))
@@ -209,6 +211,7 @@ function AppRoutes() {
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/menu" element={<MenuPage />} />
+        <Route path="/menu/notifications" element={<NotificationSettingsPage />} />
       </Route>
 
       {/* What this app takes off your phone. Its own header, so it renders outside the tab shell —
@@ -379,6 +382,7 @@ function AppRoutes() {
         />
         {/* Live board — Admin + Manager (manager scoped to their locations server-side, like today). */}
         <Route path="today" element={<PanelPage path="today"><TodayPage /></PanelPage>} />
+        <Route path="notifications" element={<PanelPage path="notifications"><NotificationCenterPage /></PanelPage>} />
         {/* Shared task board — access is a server-side id allowlist, so the route stays open (admin +
             manager) and the page/API 403s anyone not on the list. */}
         <Route path="tasks" element={<PanelPage path="tasks"><TasksPage /></PanelPage>} />

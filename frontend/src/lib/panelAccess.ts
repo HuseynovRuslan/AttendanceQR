@@ -61,6 +61,9 @@ export const PANEL_PAGES: PanelPage[] = [
   // ── The day ────────────────────────────────────────────────────────────────────────────────────
   { path: 'dashboard', label: 'İdarəetmə paneli', roles: BOTH, perms: ['dashboard.view'] },
   { path: 'today', label: 'Bugünkü davamiyyət', roles: BOTH, perms: ['attendance.view'] },
+  // The notification center: the reader's own lines, which the server lists only while their branch is still in the
+  // reader's attendance scope. Reached from the bell, not the menu.
+  { path: 'notifications', label: 'Bildirişlər', menu: false, roles: BOTH, perms: ['attendance.view'] },
   { path: 'problems', label: 'Problemlər', roles: BOTH, perms: ['attendance.view'] },
   // A wrong shift is fixed by whoever knows when the crew actually works — the branch manager. The
   // endpoint narrows their view to their own branches and plain employees, the same as every board.
