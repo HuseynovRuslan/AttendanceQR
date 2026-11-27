@@ -23,6 +23,7 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
   const navigate = useNavigate()
   const [summary, setSummary] = useState<NotificationsSummary | null>(null)
   const [unread, setUnread] = useState(0)
+  const [unreadMore, setUnreadMore] = useState(false)
   const [latest, setLatest] = useState<CenterNotification[] | null>(null)
   const [open, setOpen] = useState(false)
   const [toast, setToast] = useState<LiveItem | null>(null)
@@ -38,7 +39,10 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
 
   const refreshUnread = useCallback(async () => {
     const { status, data } = await getUnreadCount()
-    if (status === 200 && data) setUnread(data.unread)
+    if (status === 200 && data) {
+      setUnread(data.unread)
+      setUnreadMore(!!data.more)
+    }
   }, [])
 
   // The fallback for when the live channel cannot be had (a borrowed session, a network that refuses it).
@@ -59,11 +63,13 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
     [refreshUnread],
   )
 
+  // Gone by itself after a few seconds — but not while it is being read with the pointer on it or focus in it.
+  const [toastHeld, setToastHeld] = useState(false)
   useEffect(() => {
-    if (!toast) return
+    if (!toast || toastHeld) return
     const t = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(t)
-  }, [toast])
+  }, [toast, toastHeld])
 
   useEffect(() => {
     if (!open || latest) return
@@ -100,7 +106,8 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
   }
 
   const count = (summary?.totalCount ?? 0) + unread
-  const label = count > 0 ? `Bildirişlər, ${count} yeni` : 'Bildirişlər'
+  const many = count > 99 || unreadMore
+  const label = count > 0 ? `Bildirişlər, ${many ? '99-dan çox' : count} yeni` : 'Bildirişlər'
 
   return (
     <div ref={rootRef} style={{ position: 'relative' }}>
@@ -135,7 +142,7 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
               lineHeight: 1,
             }}
           >
-            {count > 99 ? '99+' : count}
+            {many ? '99+' : count}
           </span>
         )}
       </button>
@@ -225,19 +232,24 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
         {toast && (
           <div
             className="card"
+            onMouseEnter={() => setToastHeld(true)}
+            onMouseLeave={() => setToastHeld(false)}
+            onFocus={() => setToastHeld(true)}
+            onBlur={() => setToastHeld(false)}
             style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 12px 12px 14px', width: 340, maxWidth: '100%', boxShadow: 'var(--sh)' }}
           >
             <NotificationKindIcon typeKey={toast.typeKey} size={32} />
             <button
               type="button"
+              aria-label={`${toast.title}: ${toast.body}`}
               onClick={() => {
                 setToast(null)
+                setToastHeld(false)
                 if (toast.url) navigate(toast.url)
               }}
               style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit' }}
             >
-              <span style={{ display: 'block', fontWeight: 800, fontSize: 13, color: 'var(--c900)' }}>{toast.title}</span>
-              <span style={{ display: 'block', fontSize: 13, color: 'var(--c700)', marginTop: 2 }}>{toast.body}</span>
+              <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5, color: 'var(--c900)', lineHeight: 1.4 }}>{toast.body}</span>
               <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)', marginTop: 3 }}>
                 {metaLine(toast.branchName, toast.occurredAtUtc, toast.wasOffline)}
               </span>
@@ -245,7 +257,10 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              onClick={() => setToast(null)}
+              onClick={() => {
+                setToast(null)
+                setToastHeld(false)
+              }}
               aria-label="Bağla"
               style={{ minWidth: 32, minHeight: 32, padding: 6 }}
             >

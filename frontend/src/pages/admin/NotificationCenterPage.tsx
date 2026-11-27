@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   getCenter,
   getPreferences,
+  getUnreadCount,
   markAllRead,
   markRead,
   type CenterNotification,
@@ -40,6 +41,9 @@ export function NotificationCenterPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(false)
   const [marking, setMarking] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  // Unread anywhere in the history, not just on the loaded page — what «Hamısını oxunmuş et» acts on.
+  const [serverUnread, setServerUnread] = useState(0)
   const [fresh, setFresh] = useState(0)
   const filters = useRef({ type, branch })
   filters.current = { type, branch }
@@ -56,6 +60,8 @@ export function NotificationCenterPage() {
     } else {
       setError(true)
     }
+    const count = await getUnreadCount()
+    if (count.status === 200 && typeof count.data?.unread === 'number') setServerUnread(count.data.unread)
   }, [type, branch])
 
   useEffect(() => {
@@ -96,6 +102,8 @@ export function NotificationCenterPage() {
             setItems((cur) => [...add.filter((a) => !cur.some((c) => c.id === a.id)), ...cur])
             setFresh((n) => n + add.length)
           }
+          const lines = live.filter((x) => x.id).length
+          if (lines > 0) setServerUnread((n) => n + lines)
           // A branch filter cannot be judged from the pop-up (it carries no branch id): reload instead.
           if (b && live.some((x) => x.id)) void load()
         },
@@ -107,17 +115,21 @@ export function NotificationCenterPage() {
   async function more() {
     if (!cursor) return
     setLoadingMore(true)
+    setActionError(null)
     const { status, data } = await getCenter({ type: type || undefined, locationId: branch || undefined, cursor, limit: 30 })
     setLoadingMore(false)
     if (status === 200 && data) {
       setItems((cur) => [...cur, ...data.items.filter((d) => !cur.some((c) => c.id === d.id))])
       setCursor(data.nextCursor)
+    } else {
+      setActionError('Daha köhnə bildirişlər yüklənmədi. Bir azdan yenidən cəhd edin.')
     }
   }
 
   async function open(n: CenterNotification) {
     if (!n.readAtUtc) {
       setItems((cur) => cur.map((c) => (c.id === n.id ? { ...c, readAtUtc: new Date().toISOString() } : c)))
+      setServerUnread((u) => Math.max(0, u - 1))
       void markRead(n.id).then(() => emitNotificationsChanged())
     }
     if (n.url) navigate(n.url)
@@ -125,16 +137,20 @@ export function NotificationCenterPage() {
 
   async function readAll() {
     setMarking(true)
+    setActionError(null)
     const { status } = await markAllRead(type || undefined)
     setMarking(false)
     if (status === 200) {
       const now = new Date().toISOString()
       setItems((cur) => cur.map((c) => (c.readAtUtc ? c : { ...c, readAtUtc: now })))
+      setServerUnread(0)
       emitNotificationsChanged()
+    } else {
+      setActionError('Oxunmuş kimi qeyd olunmadı. İnternet bağlantısını yoxlayıb yenidən cəhd edin.')
     }
   }
 
-  const unread = items.filter((i) => !i.readAtUtc).length
+  const unread = Math.max(items.filter((i) => !i.readAtUtc).length, serverUnread)
   const groups = groupByDay(items, (i) => i.createdAtUtc)
 
   return (
@@ -187,6 +203,12 @@ export function NotificationCenterPage() {
         )}
       </div>
 
+      {actionError && (
+        <div className="fb fb-err" role="alert" style={{ marginBottom: 12 }}>
+          {actionError}
+        </div>
+      )}
+
       <div role="status" aria-live="polite" className="sr-only">
         {fresh > 0 ? `${fresh} yeni bildiriş` : ''}
       </div>
@@ -233,11 +255,11 @@ export function NotificationCenterPage() {
                 aria-label={`${lookOf(n.typeKey).label}: ${n.body} ${metaLine(n.branchName, n.occurredAtUtc, n.wasOffline)}${n.readAtUtc ? '' : ', oxunmayıb'}`}
                 style={{
                   display: 'flex',
-                  alignItems: 'flex-start',
+                  alignItems: 'center',
                   gap: 12,
                   width: '100%',
-                  padding: '14px 16px',
-                  minHeight: 64,
+                  padding: '12px 16px',
+                  minHeight: 60,
                   border: 'none',
                   borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
                   background: n.readAtUtc ? 'var(--white, #fff)' : 'var(--c50)',
@@ -247,14 +269,18 @@ export function NotificationCenterPage() {
                 }}
               >
                 <NotificationKindIcon typeKey={n.typeKey} />
+                {/* One sentence carries it — «Əliyev Elvin işə 25 dəqiqə gecikdi» — so it is the line; the type is the
+                    icon and the accessible name, not a bold «İşçi gecikdi» above it saying the same thing again. */}
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: n.readAtUtc ? 600 : 800, color: 'var(--c900)', fontSize: 14 }}>
-                    {n.title}
-                  </span>
-                  <span style={{ display: 'block', color: 'var(--c700)', fontSize: 14, marginTop: 2, overflowWrap: 'anywhere' }}>
+                  <span
+                    style={{
+                      display: 'block', fontWeight: n.readAtUtc ? 500 : 700, color: n.readAtUtc ? 'var(--c700)' : 'var(--c900)',
+                      fontSize: 14.5, lineHeight: 1.4, overflowWrap: 'anywhere',
+                    }}
+                  >
                     {n.body}
                   </span>
-                  <span style={{ display: 'block', color: 'var(--c500)', fontSize: 12.5, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ display: 'block', color: 'var(--c500)', fontSize: 12.5, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>
                     {metaLine(n.branchName, n.occurredAtUtc, n.wasOffline)}
                   </span>
                 </span>

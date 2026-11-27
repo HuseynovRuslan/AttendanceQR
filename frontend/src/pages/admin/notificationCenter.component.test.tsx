@@ -14,6 +14,8 @@ const net = vi.hoisted(() => ({
   pages: {} as Record<string, { items: unknown[]; nextCursor: string | null }>,
   calls: [] as string[],
   listener: null as LiveListener | null,
+  unread: 0,
+  readAllStatus: 200,
 }))
 
 vi.mock('../../api/client', async (importOriginal) => ({
@@ -21,7 +23,8 @@ vi.mock('../../api/client', async (importOriginal) => ({
   apiRequest: vi.fn(async (path: string, options?: { method?: string }) => {
     net.calls.push(`${options?.method ?? 'GET'} ${path}`)
     if (path.startsWith('/api/notifications/preferences')) return { status: 200, data: { branches: [] } }
-    if (path.startsWith('/api/notifications/read-all')) return { status: 200, data: { marked: 2 } }
+    if (path.startsWith('/api/notifications/read-all')) return net.readAllStatus === 200 ? { status: 200, data: { marked: 2 } } : { status: net.readAllStatus, data: null }
+    if (path.startsWith('/api/notifications/unread-count')) return { status: 200, data: { unread: net.unread, more: false } }
     if (path.match(/^\/api\/notifications\/[^/]+\/read$/)) return { status: 200, data: {} }
     if (path.startsWith('/api/notifications')) {
       const cursor = new URLSearchParams(path.split('?')[1] ?? '').get('cursor') ?? ''
@@ -47,6 +50,8 @@ beforeEach(() => {
   net.pages = {}
   net.calls = []
   net.listener = null
+  net.unread = 0
+  net.readAllStatus = 200
 })
 afterEach(() => cleanup())
 
@@ -120,5 +125,24 @@ describe('«Bildirişlər» center', () => {
     const links = screen.getAllByRole('link', { name: 'Bildiriş ayarları' })
     expect(links.length).toBeGreaterThan(0)
     expect(links.every((a) => a.getAttribute('href') === '/menu/notifications')).toBe(true)
+  })
+  it('offers «read all» when the unread lines are further back than the first page, and says so when it fails', async () => {
+    net.pages[''] = { items: [line('oxunub', { readAtUtc: new Date().toISOString() })], nextCursor: 'c1' }
+    net.unread = 40
+    net.readAllStatus = 500
+    page()
+    const readAll = await screen.findByRole('button', { name: /Hamısını oxunmuş et/ })
+    await waitFor(() => expect((readAll as HTMLButtonElement).disabled).toBe(false))
+
+    fireEvent.click(readAll)
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Oxunmuş kimi qeyd olunmadı/)
+  })
+
+  it('shows the sentence once, with its type in the accessible name rather than in a second bold line', async () => {
+    net.pages[''] = { items: [line('Əliyev Elvin', { typeKey: 'attendance.late', title: 'İşçi gecikdi', body: 'Əliyev Elvin işə 25 dəqiqə gecikdi.', minutes: 25 })], nextCursor: null }
+    page()
+    const row = await screen.findByRole('button', { name: /Gecikmə: Əliyev Elvin işə 25 dəqiqə gecikdi/ })
+    expect(within(row).queryByText('İşçi gecikdi')).toBeNull()
+    expect(within(row).getByText('Əliyev Elvin işə 25 dəqiqə gecikdi.')).toBeTruthy()
   })
 })

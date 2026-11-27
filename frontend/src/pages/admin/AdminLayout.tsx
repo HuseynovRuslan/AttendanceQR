@@ -47,8 +47,9 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   // Deliberately EMPTY — see the topbar below. The dashboard writes its own «İdarəetmə paneli»
   // heading, and the bar repeating it word for word two lines higher was the first thing anyone saw.
   '/admin/dashboard': { title: '', sub: '' },
-  // The page writes its own heading; the bar names it so the tab and the breadcrumb agree.
-  '/admin/notifications': { title: 'Bildirişlər', sub: 'Giriş, çıxış və gecikmə bildirişləriniz' },
+  // EMPTY for the same reason as the dashboard's: the page writes its own «Bildirişlər» heading (with the way to its
+  // settings), and the bar repeating it right above was the first thing on a phone.
+  '/admin/notifications': { title: '', sub: 'İdarəetmə · bildirişlər' },
   '/admin/tenants': { title: 'Şirkətlər', sub: 'Bütün müştərilər — yarat, söndür, aç' },
   '/admin/tasks': { title: 'Tapşırıqlar', sub: 'Komandanın ortaq görüləcək işlər siyahısı' },
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
@@ -392,7 +393,7 @@ function AdminLayoutFrame() {
                   </>
                 : <>
                     <div className="topbar-title">{branding.displayName ?? 'Şirkət'}</div>
-                    <div className="topbar-sub">İdarəetmə · canlı davamiyyət</div>
+                    <div className="topbar-sub">{meta.sub || 'İdarəetmə · canlı davamiyyət'}</div>
                   </>}
             </div>
           </div>

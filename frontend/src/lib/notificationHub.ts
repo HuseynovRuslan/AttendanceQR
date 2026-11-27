@@ -32,6 +32,9 @@ let connection: { stop: () => Promise<void> } | null = null
 let starting: Promise<void> | null = null
 let status: LiveStatus = 'offline'
 let retryTimer: ReturnType<typeof setTimeout> | null = null
+// Set once a connection has been live: a later fresh start (after the automatic reconnects gave up, or after the server
+// closed the connection at the end of its ticket's lifetime) is a reconnect too, and subscribers refetch.
+let wasLive = false
 
 function setStatus(next: LiveStatus) {
   status = next
@@ -77,12 +80,22 @@ async function start(): Promise<void> {
       conn.onclose(() => {
         connection = null
         setStatus('offline')
-        scheduleRetry()
+        // Closed by the server at the end of its ticket's lifetime, or the automatic reconnects ran out: a fresh
+        // ticket soon, then the slow retry if that fails too.
+        scheduleRetry(3_000)
       })
 
       await conn.start()
+      // The last listener may have left while this was connecting: nobody to hear it, so do not keep it open.
+      if (listeners.size === 0) {
+        void conn.stop()
+        setStatus('offline')
+        return
+      }
       connection = conn
       setStatus('live')
+      if (wasLive) for (const l of listeners) l.onReconnected?.()
+      wasLive = true
     } catch {
       connection = null
       setStatus('offline')
@@ -95,12 +108,12 @@ async function start(): Promise<void> {
 }
 
 /** After the automatic reconnects gave up (or the first start failed): try again later, while anybody listens. */
-function scheduleRetry() {
+function scheduleRetry(delayMs = 60_000) {
   if (retryTimer || listeners.size === 0) return
   retryTimer = setTimeout(() => {
     retryTimer = null
     if (listeners.size > 0) void start()
-  }, 60_000)
+  }, delayMs)
 }
 
 /** Listen to the live channel; the connection opens with the first listener and closes with the last. */

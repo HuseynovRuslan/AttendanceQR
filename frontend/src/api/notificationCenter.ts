@@ -54,7 +54,8 @@ export function getCenter(q: CenterQuery = {}) {
 }
 
 export function getUnreadCount() {
-  return apiRequest<{ unread: number }>('/api/notifications/unread-count')
+  // `more`: the server counts only as far as the badge shows (99) — beyond that it is «99+».
+  return apiRequest<{ unread: number; more?: boolean }>('/api/notifications/unread-count')
 }
 
 export function markRead(id: string) {
