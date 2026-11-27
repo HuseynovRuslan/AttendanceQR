@@ -188,10 +188,10 @@ public class PushSessionBindingTests
     private sealed class RecordingWeb : IPushSender
     {
         public List<string> Sent { get; } = new();
-        public Task<bool> SendAsync(string endpoint, string p256dh, string auth, string title, string body, string? url, CancellationToken ct = default)
+        public Task<PushSendResult> SendAsync(string endpoint, string p256dh, string auth, string title, string body, string? url, CancellationToken ct = default)
         {
             lock (Sent) Sent.Add(endpoint);
-            return Task.FromResult(true);
+            return Task.FromResult(PushSendResult.Delivered);
         }
     }
 
@@ -199,10 +199,10 @@ public class PushSessionBindingTests
     {
         public bool IsConfigured => true;
         public List<string> Sent { get; } = new();
-        public Task<bool> SendAsync(string token, string title, string body, string? url, CancellationToken ct = default)
+        public Task<PushSendResult> SendAsync(string token, string title, string body, string? url, CancellationToken ct = default)
         {
             lock (Sent) Sent.Add(token);
-            return Task.FromResult(true);
+            return Task.FromResult(PushSendResult.Delivered);
         }
     }
 

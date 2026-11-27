@@ -638,17 +638,19 @@ public partial class AuthController : ControllerBase
         // to the devices of the CURRENT session (PushSessionBinding) — sent after, it would reach none of
         // the devices the real employee is signed in on, which are exactly the ones it is for. Nothing is
         // pending on the context yet, so the notifier's own save (pruning) cannot commit half a reset.
-        // Best-effort — never fail the reset if push is unavailable.
+        // Best-effort and bounded: the alert never fails the reset, never delays it past a few seconds, and is not
+        // cut short by the request — a reset the person has proven with both factors goes through whatever push does.
         try
         {
+            using var alertDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await _pushNotifier.NotifyEmployeesAsync(
                 new[] { employee.Id },
                 "PIN sıfırlandı",
                 "PIN-iniz özünə-xidmət (üz təsdiqi) ilə sıfırlandı. Siz deyildinizsə, dərhal administratora müraciət edin.",
                 "/login",
-                HttpContext.RequestAborted);
+                alertDeadline.Token);
         }
-        catch (Exception ex) when (!HttpContext.RequestAborted.IsCancellationRequested)
+        catch (Exception ex)
         {
             _logger.LogWarning(ex, "Forgot-pin verify: reset notification failed for {EmployeeId}", employee.Id);
         }

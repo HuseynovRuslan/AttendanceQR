@@ -553,19 +553,28 @@ public class AdminAttendanceController : ControllerBase
         }
 
         // Best-effort, and last: the inbox row is the record of what was said, so a phone with no
-        // live subscription must not turn this into a failure.
-        var reached = 0;
+        // live subscription must not turn this into a failure. `pushTransient` = the phone has a
+        // subscription but its push service did not take it this time (timeout, 429, 5xx): the admin
+        // must not read «telefonuna çatdı», nor «tətbiq quraşdırılmayıb».
+        var delivery = PushDelivery.NoDevice;
         try
         {
-            reached = await pushNotifier.NotifyEmployeesAsync(
+            var outcome = await pushNotifier.NotifyEachAsync(
                 new[] { record.EmployeeId }, title, body, "/notifications", ct);
+            delivery = outcome.GetValueOrDefault(record.EmployeeId, PushDelivery.NoDevice);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Photo warning {RecordId}: push failed", recordId);
+            delivery = PushDelivery.Transient;
         }
 
-        return Ok(new { sent = true, notified = reached });
+        return Ok(new
+        {
+            sent = true,
+            notified = delivery == PushDelivery.Delivered ? 1 : 0,
+            pushTransient = delivery == PushDelivery.Transient,
+        });
     }
 
     /// <summary>
