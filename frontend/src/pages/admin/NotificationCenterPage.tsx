@@ -238,7 +238,7 @@ export function NotificationCenterPage() {
             border: `1px solid ${onlyUnread ? UNREAD_BAR : 'var(--c200)'}`,
             background: onlyUnread ? UNREAD_BAR : 'var(--white, #fff)',
             color: onlyUnread ? '#fff' : 'var(--c700)',
-            fontWeight: 700, fontSize: 13, cursor: 'pointer', font: 'inherit', whiteSpace: 'nowrap',
+            fontFamily: 'inherit', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
           }}
         >
           <span
@@ -258,7 +258,18 @@ export function NotificationCenterPage() {
             </span>
           )}
         </button>
-        <div className="seg" role="group" aria-label="Bildiriş növü" style={{ flex: '1 1 300px' }}>
+        {branches.length > 1 && (
+          <label style={{ flex: '1 1 160px', maxWidth: 260 }}>
+            <span className="sr-only">Filial</span>
+            <select className="inp" value={branch} onChange={(e) => setBranch(e.target.value)} style={{ minHeight: 44 }}>
+              <option value="">Bütün filiallar</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="seg" role="group" aria-label="Bildiriş növü" style={{ flex: '1 1 320px' }}>
           {TYPES.map((t) => (
             <button
               key={t.key || 'all'}
@@ -272,17 +283,6 @@ export function NotificationCenterPage() {
             </button>
           ))}
         </div>
-        {branches.length > 1 && (
-          <label style={{ flex: '0 1 240px' }}>
-            <span className="sr-only">Filial</span>
-            <select className="inp" value={branch} onChange={(e) => setBranch(e.target.value)} style={{ minHeight: 44 }}>
-              <option value="">Bütün filiallar</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
       </div>
 
       {actionError && (
