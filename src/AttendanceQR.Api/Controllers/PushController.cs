@@ -30,17 +30,26 @@ public class PushController : ControllerBase
     }
 
     /// <summary>Sends a test notification to the caller's OWN devices — the way to check the whole
-    /// chain (subscription → server → push service → phone) without broadcasting to anyone else.</summary>
+    /// chain (subscription → server → push service → phone) without broadcasting to anyone else.
+    /// `reached` is 1 only when a push service accepted it; `transient` says it failed in a way that is
+    /// worth trying again in a minute (timeout, 429, 5xx) — not a reason to switch notifications off and on.</summary>
     [HttpPost("test")]
     public async Task<IActionResult> Test()
     {
-        var reached = await _notifier.NotifyEmployeesAsync(
-            new[] { User.EmployeeId() },
+        var me = User.EmployeeId();
+        var outcome = await _notifier.NotifyEachAsync(
+            new[] { me },
             "Test bildirişi",
             "Bildirişlər işləyir ✓ Elanlar və xatırlatmalar bu cür gələcək.",
             "/home",
             HttpContext.RequestAborted);
-        return Ok(new { reached });
+        var result = outcome.GetValueOrDefault(me, PushDelivery.NoDevice);
+        return Ok(new
+        {
+            reached = result == PushDelivery.Delivered ? 1 : 0,
+            transient = result == PushDelivery.Transient,
+            outcome = result.ToString(),
+        });
     }
 
     /// <summary>The VAPID public key the browser needs to subscribe. `enabled:false` = push is not

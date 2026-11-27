@@ -6,14 +6,14 @@ using Microsoft.Extensions.Logging;
 namespace AttendanceQR.Infrastructure.Services;
 
 /// <summary>Sends a push to one NATIVE app device (Capacitor Android/iOS) via FCM. The mirror of
-/// <see cref="IPushSender"/> for Web Push: never throws, and reports a dead token so the caller
-/// prunes it — the same "return false = delete the row" contract.</summary>
+/// <see cref="IPushSender"/> for Web Push: never throws for a failed send, and answers with the same
+/// <see cref="PushSendResult"/> — Gone means delete the row, Transient means try again later. Cancellation of
+/// <c>ct</c> propagates.</summary>
 public interface IFcmSender
 {
     bool IsConfigured { get; }
 
-    /// <summary>Returns false when the token is gone (unregistered/invalid) and should be deleted.</summary>
-    Task<bool> SendAsync(string token, string title, string body, string? url, CancellationToken ct = default);
+    Task<PushSendResult> SendAsync(string token, string title, string body, string? url, CancellationToken ct = default);
 }
 
 public sealed class FirebaseFcmSender : IFcmSender
@@ -54,9 +54,9 @@ public sealed class FirebaseFcmSender : IFcmSender
         }
     }
 
-    public async Task<bool> SendAsync(string token, string title, string body, string? url, CancellationToken ct = default)
+    public async Task<PushSendResult> SendAsync(string token, string title, string body, string? url, CancellationToken ct = default)
     {
-        if (_messaging is null) return true; // not configured — no-op, keep the row
+        if (_messaging is null) return PushSendResult.NotConfigured; // not configured — no-op, keep the row
 
         var message = new Message
         {
@@ -68,19 +68,43 @@ public sealed class FirebaseFcmSender : IFcmSender
         try
         {
             await _messaging.SendAsync(message, ct);
-            return true;
+            return PushSendResult.Delivered;
         }
-        catch (FirebaseMessagingException ex) when (
-            ex.MessagingErrorCode is MessagingErrorCode.Unregistered
-                or MessagingErrorCode.InvalidArgument
-                or MessagingErrorCode.SenderIdMismatch)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return false; // token dead / malformed / wrong project → prune it
+            throw; // the caller's own deadline
+        }
+        catch (FirebaseMessagingException ex)
+        {
+            var result = Classify(ex.MessagingErrorCode, ex.ErrorCode);
+            if (result == PushSendResult.Transient)
+                _logger.LogWarning(ex, "FCM send failed (transient) — keeping token, will try again.");
+            else if (result == PushSendResult.Rejected)
+                _logger.LogWarning(ex, "FCM refused the push ({Code}) — keeping token.", ex.MessagingErrorCode?.ToString() ?? ex.ErrorCode.ToString());
+            return result;
         }
         catch (Exception ex)
         {
+            // Network, timeouts inside the SDK, an auth refresh that failed on the way: worth another try later.
             _logger.LogWarning(ex, "FCM send failed (transient) — keeping token.");
-            return true;
+            return PushSendResult.Transient;
         }
     }
+
+    /// <summary>An FCM error as an outcome: a dead or malformed token is Gone (prune — as before); an outage,
+    /// internal error or quota is Transient; anything else (APNs credentials, permissions) is Rejected.</summary>
+    public static PushSendResult Classify(MessagingErrorCode? messagingCode, ErrorCode errorCode) => messagingCode switch
+    {
+        MessagingErrorCode.Unregistered or MessagingErrorCode.InvalidArgument or MessagingErrorCode.SenderIdMismatch
+            => PushSendResult.Gone,
+        MessagingErrorCode.Unavailable or MessagingErrorCode.Internal or MessagingErrorCode.QuotaExceeded
+            => PushSendResult.Transient,
+        MessagingErrorCode.ThirdPartyAuthError => PushSendResult.Rejected,
+        _ => errorCode switch
+        {
+            ErrorCode.Unavailable or ErrorCode.Internal or ErrorCode.DeadlineExceeded or ErrorCode.ResourceExhausted
+                or ErrorCode.Aborted or ErrorCode.Unknown or ErrorCode.Cancelled => PushSendResult.Transient,
+            _ => PushSendResult.Rejected,
+        },
+    };
 }

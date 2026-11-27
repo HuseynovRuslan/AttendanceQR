@@ -437,7 +437,8 @@ export function unvoidRecord(recordId: string, reason: string) {
  * it, so a second press answers AlreadyWarned rather than accusing them twice.
  */
 export function sendPhotoWarning(recordId: string, message?: string) {
-  return apiRequest<{ sent: boolean; notified: number }>(
+  // `pushTransient`: the phone has notifications on but its push service did not take this one (timeout, 5xx).
+  return apiRequest<{ sent: boolean; notified: number; pushTransient?: boolean }>(
     `/api/admin/attendance/${recordId}/send-photo-warning`,
     { method: 'POST', body: { message: message?.trim() || null } },
   )

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported, sendTestPush } from '../lib/push'
+import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported, sendTestPush, TEST_PUSH_TRANSIENT } from '../lib/push'
 import { isStandalone } from '../lib/device'
 
 /**
@@ -40,10 +40,11 @@ export function PushToggle() {
   async function runTest() {
     setBusy(true)
     setMsg(null)
-    const reached = await sendTestPush()
+    const result = await sendTestPush()
     setBusy(false)
-    if (reached === null) setMsg('Test göndərilmədi')
-    else if (reached === 0) setMsg('Abunə tapılmadı — söndürüb yenidən açın')
+    if (result === null) setMsg('Test göndərilmədi')
+    else if (result.transient) setMsg(TEST_PUSH_TRANSIENT)
+    else if (result.reached === 0) setMsg('Abunə tapılmadı — söndürüb yenidən açın')
     else setMsg('Test göndərildi — bildiriş bir neçə saniyəyə gəlməlidir')
   }
 

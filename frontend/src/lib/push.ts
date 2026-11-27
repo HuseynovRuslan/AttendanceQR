@@ -236,12 +236,23 @@ export function getInbox() {
   return apiRequest<InboxItem[]>('/api/push/inbox')
 }
 
-/** Sends a test notification to this employee's own devices. Returns how many were reached — 0 means
- *  the subscription didn't survive (re-enable), so the UI can say something useful. */
-export async function sendTestPush(): Promise<number | null> {
-  const res = await apiRequest<{ reached: number }>('/api/push/test', { method: 'POST' })
-  return res.status === 200 && res.data ? res.data.reached : null
+/** What a test push came to. `reached` > 0 = a push service took it. `transient` = it failed in a way worth
+ *  trying again in a minute (timeout, 429, 5xx) — NOT a dead subscription, so the UI must not tell the person to
+ *  switch notifications off and on. reached 0 without `transient` = nothing live to send to (re-enable). */
+export interface TestPushResult {
+  reached: number
+  transient: boolean
 }
+
+/** Sends a test notification to this employee's own devices. null = the request itself failed. */
+export async function sendTestPush(): Promise<TestPushResult | null> {
+  const res = await apiRequest<{ reached: number; transient?: boolean }>('/api/push/test', { method: 'POST' })
+  return res.status === 200 && res.data ? { reached: res.data.reached, transient: res.data.transient === true } : null
+}
+
+/** The line shown for a transient test-push failure — one wording everywhere it appears. */
+export const TEST_PUSH_TRANSIENT = 'Müvəqqəti xəta — bir azdan yenidən yoxlayın'
+
 
 /** Unsubscribes this browser and tells the server to forget it. */
 export async function disablePush(): Promise<boolean> {

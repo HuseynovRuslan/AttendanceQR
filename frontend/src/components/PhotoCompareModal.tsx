@@ -69,7 +69,9 @@ export function PhotoCompareModal({
     if (status === 200 && data && 'sent' in data) {
       setDone(data.notified > 0
         ? 'Bildiriş göndərildi — telefonuna çatdı'
-        : 'Bildiriş yazıldı — telefonunda tətbiq quraşdırılmayıb, tətbiqin bildirişlər bölməsində görəcək')
+        : data.pushTransient
+          ? 'Bildiriş yazıldı — telefonuna hələ çatmadı (müvəqqəti xəta), tətbiqin bildirişlər bölməsində görəcək'
+          : 'Bildiriş yazıldı — telefonunda tətbiq quraşdırılmayıb, tətbiqin bildirişlər bölməsində görəcək')
       onActed?.()
       return
     }
