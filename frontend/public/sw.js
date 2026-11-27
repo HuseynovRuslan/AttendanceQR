@@ -135,8 +135,10 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      // One notification per topic: a second reminder replaces the first rather than stacking.
-      tag: 'qrlog-checkout',
+      // One notification per topic: a second reminder replaces the first rather than stacking. A staff
+      // notification (it opens the admin panel) is its own topic, so a burst of check-ins never replaces the
+      // person's own check-out reminder, and the newest one (or its summary) is what stays on the screen.
+      tag: data.tag || ((data.url || '').startsWith('/admin') ? 'qrlog-staff' : 'qrlog-checkout'),
       renotify: true,
       data: { url: data.url || '/' },
     }),

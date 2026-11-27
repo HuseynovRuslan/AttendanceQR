@@ -194,6 +194,15 @@ export const IconBell = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+/** An arrow into a door — «giriş etdi». The pair of IconLogout, which the check-out notifications use. */
+export const IconLogIn = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+    <polyline points="10 17 15 12 10 7" />
+    <line x1="15" y1="12" x2="3" y2="12" />
+  </svg>
+)
+
 export const IconShield = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <path d="M12 3l7 3v6c0 4.5-3 8.2-7 9-4-.8-7-4.5-7-9V6l7-3z" />

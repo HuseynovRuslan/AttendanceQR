@@ -407,7 +407,7 @@ builder.Services
     // The live notification channel authenticates by a short-lived ticket, never the long-lived session JWT
     // (a WebSocket carries it in the URL). See NotificationsHub / HubTickets.
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AttendanceQR.Api.Notifications.HubTicketAuthentication>(
-        AttendanceQR.Api.Notifications.HubTicketAuthentication.Scheme, _ => { });
+        AttendanceQR.Api.Notifications.HubTicketAuthentication.SchemeName, _ => { });
 builder.Services.AddAuthorization();
 
 // CORS: the SPA calls the API cross-origin. Every tenant lives at its own <slug>.qrlog.az subdomain,

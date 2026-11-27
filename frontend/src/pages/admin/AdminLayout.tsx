@@ -47,6 +47,8 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   // Deliberately EMPTY — see the topbar below. The dashboard writes its own «İdarəetmə paneli»
   // heading, and the bar repeating it word for word two lines higher was the first thing anyone saw.
   '/admin/dashboard': { title: '', sub: '' },
+  // The page writes its own heading; the bar names it so the tab and the breadcrumb agree.
+  '/admin/notifications': { title: 'Bildirişlər', sub: 'Giriş, çıxış və gecikmə bildirişləriniz' },
   '/admin/tenants': { title: 'Şirkətlər', sub: 'Bütün müştərilər — yarat, söndür, aç' },
   '/admin/tasks': { title: 'Tapşırıqlar', sub: 'Komandanın ortaq görüləcək işlər siyahısı' },
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
@@ -106,7 +108,12 @@ function AdminLayoutFrame() {
   const modelOnly = role === 'Admin' ? enforced && !access?.companyAdmin : role !== 'Manager'
   // The bell and the shelf counts: today the admin's; in Enforced whoever holds «dashboard.view» — the server
   // narrows every count to the people they hold that line's right over.
-  const hasBell = enforced ? !!access?.permissions.some((p) => p.key === 'dashboard.view') : isAdmin
+  const hasActionItems = enforced ? !!access?.permissions.some((p) => p.key === 'dashboard.view') : isAdmin
+  // The bell is also the way into one's own notification center, which anybody who may see attendance can have — a
+  // branch manager in a company on today's roles included. Its «needs attention» half stays theirs who may read it.
+  const hasBell = hasActionItems || (enforced
+    ? !!access?.permissions.some((p) => p.key === 'attendance.view')
+    : role === 'Manager')
 
   // Per-tenant plan switches. A hidden menu item is only cosmetic — the backend 403s these anyway
   // (see [RequireFeature]); this just stops offering a screen that would refuse.
@@ -389,7 +396,7 @@ function AdminLayoutFrame() {
                   </>}
             </div>
           </div>
-          <div className="topbar-right">{hasBell && <NotificationBell />}</div>
+          <div className="topbar-right">{hasBell && <NotificationBell actionItems={hasActionItems} />}</div>
         </div>
         <div className="content">
           <Outlet />

@@ -20,7 +20,7 @@ namespace AttendanceQR.Api.Notifications;
 /// (<see cref="HubTickets"/>), not the session JWT: a browser's WebSocket carries the credential in the URL, URLs end
 /// up in logs, and these JWTs live for years.
 /// </summary>
-[Authorize(AuthenticationSchemes = HubTicketAuthentication.Scheme)]
+[Authorize(AuthenticationSchemes = HubTicketAuthentication.SchemeName)]
 public sealed class NotificationsHub : Hub
 {
     public const string Path = "/hubs/notifications";
@@ -128,7 +128,7 @@ public sealed class HubTickets
 /// SignalR client's Authorization header (negotiate) or its access_token query (the WebSocket).</summary>
 public sealed class HubTicketAuthentication : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    public const string Scheme = "HubTicket";
+    public const string SchemeName = "HubTicket";
     private readonly HubTickets _tickets;
 
     public HubTicketAuthentication(
@@ -145,8 +145,8 @@ public sealed class HubTicketAuthentication : AuthenticationHandler<Authenticati
             return Task.FromResult(AuthenticateResult.NoResult());
 
         var identity = new ClaimsIdentity(
-            [new Claim("sub", employeeId.ToString()), new Claim("tid", tenantId.ToString())], Scheme, "sub", "role");
-        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
+            [new Claim("sub", employeeId.ToString()), new Claim("tid", tenantId.ToString())], SchemeName, "sub", "role");
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
 }
 
