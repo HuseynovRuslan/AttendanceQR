@@ -286,7 +286,8 @@ public class WebPushTests
         Subscribe(db, timedOut, "https://push.example/hang");
         Subscribe(db, refused, "https://push.example/403");
         Subscribe(db, gone, "https://push.example/410");
-        db.PushSubscriptions.Add(new PushSubscription { EmployeeId = unavailable, Endpoint = "fcm:t1", FcmToken = "t1" });
+        Person(db, unavailable);
+        db.PushSubscriptions.Add(new PushSubscription { EmployeeId = unavailable, Endpoint = "fcm:t1", FcmToken = "t1", TokenVersion = 0 });
         await db.SaveChangesAsync();
 
         var web = new ScriptedSender(endpoint => endpoint switch
@@ -355,8 +356,25 @@ public class WebPushTests
         return db;
     }
 
-    private static void Subscribe(AppDbContext db, Guid employee, string endpoint) =>
-        db.PushSubscriptions.Add(new PushSubscription { EmployeeId = employee, Endpoint = endpoint + "#" + Guid.NewGuid(), P256dh = "k", Auth = "a" });
+    /// <summary>A device of <paramref name="employee"/>'s current session (a push goes only to those — PushSessionBinding).</summary>
+    private static void Subscribe(AppDbContext db, Guid employee, string endpoint)
+    {
+        Person(db, employee);
+        db.PushSubscriptions.Add(new PushSubscription
+        {
+            EmployeeId = employee, Endpoint = endpoint + "#" + Guid.NewGuid(), P256dh = "k", Auth = "a", TokenVersion = 0,
+        });
+    }
+
+    private static void Person(AppDbContext db, Guid employee)
+    {
+        if (db.Employees.Local.Any(e => e.Id == employee) || db.Employees.Any(e => e.Id == employee))
+            return;
+        db.Employees.Add(new Employee
+        {
+            Id = employee, FullName = "P", Email = $"{employee:N}@t.local", PasswordHash = "x", IsActive = true, TokenVersion = 0,
+        });
+    }
 
     private sealed class ScriptedSender(Func<string, PushSendResult?> script) : IPushSender
     {

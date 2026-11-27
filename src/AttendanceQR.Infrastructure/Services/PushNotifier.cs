@@ -76,9 +76,9 @@ public sealed class PushNotifier : IPushNotifier
         if (people.Count == 0)
             return new Dictionary<Guid, PushDelivery>();
 
-        var subs = await _db.PushSubscriptions
-            .Where(s => people.Contains(s.EmployeeId))
-            .ToListAsync(ct);
+        // Only the devices of each person's CURRENT session: a TokenVersion bump ends the session's pushes
+        // too, and those rows are pruned here. See PushSessionBinding.
+        var subs = await PushSessionBinding.LiveSubscriptionsAsync(_db, people, ct);
 
         var results = new System.Collections.Concurrent.ConcurrentBag<(Domain.Entities.PushSubscription Sub, PushSendResult Result)>();
 

@@ -3,6 +3,7 @@ using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -123,15 +124,29 @@ public class PushController : ControllerBase
         return Ok(new { acknowledged = true });
     }
 
+    /// <summary>
+    /// Never in a support session — neither an explicit enable nor the app's automatic re-bind after a sign-in. Its
+    /// token names the customer's admin, so the device is the operator's: subscribing it would deliver that company's
+    /// notifications to the operator's browser. ImpersonationBoundary already refuses these routes (they are not
+    /// console writes); this answers the same here as well, so it does not depend on that list staying as it is.
+    /// </summary>
+    private IActionResult? RefuseSupportSession() =>
+        User.IsImpersonating() ? StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" }) : null;
+
     [HttpPost("subscribe")]
     public async Task<IActionResult> Subscribe([FromBody] PushSubscribeRequest request)
     {
+        if (RefuseSupportSession() is { } refused)
+            return refused;
         var ct = HttpContext.RequestAborted;
         if (string.IsNullOrWhiteSpace(request.Endpoint) || string.IsNullOrWhiteSpace(request.P256dh)
             || string.IsNullOrWhiteSpace(request.Auth))
             return BadRequest(new { error = "InvalidSubscription" });
 
         var employeeId = User.EmployeeId();
+        var session = await CurrentTokenVersionAsync(employeeId, ct);
+        if (session is null)
+            return Unauthorized();
 
         // The endpoint is globally unique. Re-subscribing (or a phone changing hands) updates the row
         // rather than piling up duplicates. IgnoreQueryFilters so a row left behind by another tenant
@@ -142,10 +157,18 @@ public class PushController : ControllerBase
 
         if (existing is not null)
         {
+            // The app's own re-registration after a sign-in leaves an endpoint that is someone else's alone:
+            // on a crew phone the browser is shared, and switching to another account must not take the
+            // first one's reminders away. Only the person tapping «aktiv et» moves it.
+            var someoneElses = existing.EmployeeId != employeeId || existing.TenantId != _db.CurrentTenantId;
+            if (request.Refresh && someoneElses)
+                return Ok(new { ok = true, bound = false });
+
             existing.EmployeeId = employeeId;
             existing.P256dh = request.P256dh;
             existing.Auth = request.Auth;
             existing.TenantId = _db.CurrentTenantId;
+            existing.TokenVersion = session.Value;
         }
         else
         {
@@ -155,12 +178,23 @@ public class PushController : ControllerBase
                 Endpoint = request.Endpoint,
                 P256dh = request.P256dh,
                 Auth = request.Auth,
+                TokenVersion = session.Value,
             });
         }
 
         await _db.SaveChangesAsync(ct);
-        return Ok(new { ok = true });
+        return Ok(new { ok = true, bound = true });
     }
+
+    /// <summary>The caller's current TokenVersion — the session a device registered now belongs to (see
+    /// PushSubscription.TokenVersion). The JWT handler has already checked the token carries this very
+    /// value; read from the row rather than the claim so the binding never trusts the token over the
+    /// database. Null when the account is gone.</summary>
+    private async Task<int?> CurrentTokenVersionAsync(Guid employeeId, CancellationToken ct)
+        => await _db.Employees
+            .Where(e => e.Id == employeeId)
+            .Select(e => (int?)e.TokenVersion)
+            .FirstOrDefaultAsync(ct);
 
     [HttpPost("unsubscribe")]
     public async Task<IActionResult> Unsubscribe([FromBody] PushUnsubscribeRequest request)
@@ -181,11 +215,16 @@ public class PushController : ControllerBase
     [HttpPost("register-native")]
     public async Task<IActionResult> RegisterNative([FromBody] PushRegisterNativeRequest request)
     {
+        if (RefuseSupportSession() is { } refused)
+            return refused;
         var ct = HttpContext.RequestAborted;
         if (string.IsNullOrWhiteSpace(request.Token))
             return BadRequest(new { error = "InvalidToken" });
 
         var employeeId = User.EmployeeId();
+        var session = await CurrentTokenVersionAsync(employeeId, ct);
+        if (session is null)
+            return Unauthorized();
         var endpoint = "fcm:" + request.Token;
 
         // The token is globally unique. Re-registering (or a phone changing hands) re-points the row
@@ -200,6 +239,7 @@ public class PushController : ControllerBase
             existing.EmployeeId = employeeId;
             existing.FcmToken = request.Token;
             existing.TenantId = _db.CurrentTenantId;
+            existing.TokenVersion = session.Value;
         }
         else
         {
@@ -208,6 +248,7 @@ public class PushController : ControllerBase
                 EmployeeId = employeeId,
                 FcmToken = request.Token,
                 Endpoint = endpoint,
+                TokenVersion = session.Value,
             });
         }
 

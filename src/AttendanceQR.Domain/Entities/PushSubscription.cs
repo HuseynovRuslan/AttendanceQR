@@ -34,5 +34,18 @@ public class PushSubscription : ITenantScoped
     /// "fcm:{token}" (to keep the unique Endpoint index happy); the notifier sends via FCM instead.</summary>
     public string? FcmToken { get; set; }
 
+    /// <summary>The value <c>-1</c>: registered before subscriptions were bound to a session.</summary>
+    public const int Unbound = -1;
+
+    /// <summary>
+    /// The <see cref="Employee.TokenVersion"/> of the session that registered this device. A push goes
+    /// only to rows whose version still equals the employee's: a PIN reset, «hər yerdən çıxış» or any other
+    /// TokenVersion bump ends the session on every device, and the device's pushes end with it — until the
+    /// person signs in there again and the app re-registers (see PushController.Subscribe). Decided at send
+    /// time (PushSessionBinding), so no TokenVersion bump anywhere has to remember to clean up after itself.
+    /// <see cref="Unbound"/> marks a row from before this rule; it is adopted to the current version.
+    /// </summary>
+    public int TokenVersion { get; set; } = Unbound;
+
     public DateTime CreatedAtUtc { get; set; }
 }
