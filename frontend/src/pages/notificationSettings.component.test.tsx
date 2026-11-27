@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotificationSettingsPage } from './NotificationSettingsPage'
 
@@ -16,6 +16,7 @@ const net = vi.hoisted(() => ({
   putStatus: 200,
   putBody: null as unknown,
   putAnswer: null as unknown,
+  subscribed: (() => Promise.resolve(false)) as () => Promise<boolean>,
 }))
 
 vi.mock('../api/client', async (importOriginal) => ({
@@ -33,7 +34,7 @@ vi.mock('../api/client', async (importOriginal) => ({
 vi.mock('../lib/push', () => ({
   pushSupported: () => true,
   pushPermission: () => 'default',
-  isSubscribed: async () => false,
+  isSubscribed: () => net.subscribed(),
   enablePush: async () => 'ok',
   disablePush: async () => true,
   sendTestPush: async () => 1,
@@ -65,8 +66,12 @@ beforeEach(() => {
   net.putStatus = 200
   net.putBody = null
   net.putAnswer = null
+  net.subscribed = () => Promise.resolve(false)
 })
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 const page = () => render(<MemoryRouter><NotificationSettingsPage /></MemoryRouter>)
 
@@ -155,4 +160,85 @@ describe('«Bildiriş ayarları»', () => {
     fireEvent.click(within(alert).getByRole('button', { name: 'Yenidən yüklə' }))
     await screen.findByRole('switch', { name: 'İşə giriş' })
   })
+
+  it('never leaves «Yoxlanılır…» standing: a browser that does not answer gets a way to ask again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    net.subscribed = () => new Promise<boolean>(() => {}) // never settles
+    page()
+    expect(await screen.findByText('Yoxlanılır…')).toBeTruthy()
+    await act(async () => {
+      vi.advanceTimersByTime(6000)
+    })
+    expect(await screen.findByText('Vəziyyəti öyrənmək alınmadı')).toBeTruthy()
+
+    net.subscribed = () => Promise.resolve(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Yenidən yoxla' }))
+    expect(await screen.findByText('Bu cihazda bildirişlər açıqdır')).toBeTruthy()
+  })
+
+  it('asks before leaving with unsaved changes, and stays, leaves or saves as answered', async () => {
+    render(
+      <MemoryRouter initialEntries={['/menu/notifications']}>
+        <Routes>
+          <Route path="/menu/notifications" element={<NotificationSettingsPage />} />
+          <Route path="/menu" element={<div>Profil ekranı</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('switch', { name: 'Gecikmə' }))
+    // Room below the last control for the save bar that now floats there.
+    expect(screen.getByTestId('save-bar-room')).toBeTruthy()
+
+    // A reload or a closed tab: the browser's own question.
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+
+    fireEvent.click(screen.getByRole('link', { name: /Profil/ }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Dəyişikliklər yadda saxlanmayıb' })
+    expect(document.activeElement?.textContent).toBe('Səhifədə qal')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Səhifədə qal' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByRole('switch', { name: 'Gecikmə' }).getAttribute('aria-checked')).toBe('true')
+
+    // «Yadda saxla və çıx» saves what is on the screen, then goes where they were going.
+    net.putAnswer = prefs({ types: TYPES.map((t) => ({ ...t, enabled: t.key === 'attendance.late' })) })
+    fireEvent.click(screen.getByRole('link', { name: /Profil/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Yadda saxla və çıx' }))
+    expect(await screen.findByText('Profil ekranı')).toBeTruthy()
+    expect((net.putBody as { enabledTypes: string[] }).enabledTypes).toEqual(['attendance.late'])
+  })
+
+  it('leaves without saving when told to, and asks nothing when there is nothing to lose', async () => {
+    render(
+      <MemoryRouter initialEntries={['/menu/notifications']}>
+        <Routes>
+          <Route path="/menu/notifications" element={<NotificationSettingsPage />} />
+          <Route path="/menu" element={<div>Profil ekranı</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const sw = await screen.findByRole('switch', { name: 'Gecikmə' })
+    fireEvent.click(sw)
+    fireEvent.click(screen.getByRole('link', { name: /Profil/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Saxlamadan çıx' }))
+    expect(await screen.findByText('Profil ekranı')).toBeTruthy()
+    expect(net.putBody).toBeNull()
+  })
+
+  it('lets the person go at once when nothing was changed', async () => {
+    render(
+      <MemoryRouter initialEntries={['/menu/notifications']}>
+        <Routes>
+          <Route path="/menu/notifications" element={<NotificationSettingsPage />} />
+          <Route path="/menu" element={<div>Profil ekranı</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByRole('switch', { name: 'Gecikmə' })
+    fireEvent.click(screen.getByRole('link', { name: /Profil/ }))
+    expect(await screen.findByText('Profil ekranı')).toBeTruthy()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
 })
+

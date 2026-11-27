@@ -1682,3 +1682,11 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   .hrs-cats{grid-template-columns:repeat(5,minmax(0,1fr))}
   .hrs-cats>*,.hrs-cats>:nth-child(n+4){grid-column:auto}
 }
+
+/* Notification center rows (NotificationCenterPage, NotificationBell). The row's own background — the unread tint or
+   white — comes in as --row-bg, so hover and press can darken whichever it is. */
+.notif-row{background:var(--row-bg,var(--white));transition:background-color .12s}
+.notif-row:hover{background:color-mix(in srgb,var(--row-bg,#fff) 94%,#1E3A8A)}
+.notif-row:active{background:color-mix(in srgb,var(--row-bg,#fff) 88%,#1E3A8A)}
+.notif-row:focus-visible,.notif-unread-toggle:focus-visible{outline:2px solid #2563EB;outline-offset:-2px}
+@media (prefers-reduced-motion: reduce){.notif-row{transition:none}}

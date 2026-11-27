@@ -15,7 +15,7 @@ import { getStreamTicket, type CenterNotification } from '../api/notificationCen
  */
 export type LiveItem = Pick<
   CenterNotification,
-  'typeKey' | 'title' | 'body' | 'branchName' | 'occurredAtUtc' | 'wasOffline' | 'minutes' | 'url'
+  'typeKey' | 'title' | 'body' | 'branchName' | 'occurredAtUtc' | 'wasOffline' | 'minutes' | 'url' | 'eventId'
 > & { id: string | null }
 
 export interface LiveListener {

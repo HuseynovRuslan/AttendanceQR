@@ -145,4 +145,65 @@ describe('«Bildirişlər» center', () => {
     expect(within(row).queryByText('İşçi gecikdi')).toBeNull()
     expect(within(row).getByText('Əliyev Elvin işə 25 dəqiqə gecikdi.')).toBeTruthy()
   })
+
+  it('shows a check-in and its lateness as one entry, led by the lateness, and reads both on a click', async () => {
+    net.pages[''] = {
+      items: [
+        line('Əliyev Elvin', { id: 'in1', eventId: 'ev1' }),
+        line('Quliyeva Aynur', { id: 'in2', eventId: 'ev2' }),
+        line('Əliyev Elvin', { id: 'late1', eventId: 'ev1', typeKey: 'attendance.late', title: 'İşçi gecikdi', body: 'Əliyev Elvin işə 25 dəqiqə gecikdi.', minutes: 25 }),
+      ],
+      nextCursor: null,
+    }
+    page()
+    const today = await screen.findByRole('region', { name: 'Bu gün' })
+    const rows = within(today).getAllByRole('button')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].getAttribute('aria-label')).toMatch(/^Giriş və Gecikmə: Əliyev Elvin işə 25 dəqiqə gecikdi/)
+
+    fireEvent.click(rows[0])
+    await screen.findByText('İşçi profili')
+    expect(net.calls).toContain('POST /api/notifications/in1/read')
+    expect(net.calls).toContain('POST /api/notifications/late1/read')
+    expect(net.calls).not.toContain('POST /api/notifications/in2/read')
+  })
+
+  it('keeps a lateness alone when only it is there — the type filter decides the lines, not the grouping', async () => {
+    net.pages[''] = {
+      items: [line('Əliyev Elvin', { id: 'late1', eventId: 'ev1', typeKey: 'attendance.late', body: 'Əliyev Elvin işə 25 dəqiqə gecikdi.' })],
+      nextCursor: null,
+    }
+    page()
+    fireEvent.click(await screen.findByRole('button', { name: 'Gecikmə' }))
+    await waitFor(() => expect(net.calls.some((c) => c.includes('type=attendance.late'))).toBe(true))
+    const rows = within(await screen.findByRole('region', { name: 'Bu gün' })).getAllByRole('button')
+    expect(rows[0].getAttribute('aria-label')).toMatch(/^Gecikmə: /)
+  })
+
+  it('filters to unread from the server, counts entries, and says when there are none left', async () => {
+    net.pages[''] = { items: [], nextCursor: null }
+    net.unread = 3
+    page()
+    const toggle = await screen.findByRole('button', { name: /Oxunmayıb/ })
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    await waitFor(() => expect(toggle.textContent).toContain('3'))
+
+    net.unread = 0
+    fireEvent.click(toggle)
+    await waitFor(() => expect(net.calls.some((c) => c.startsWith('GET /api/notifications?') && c.includes('unread=true'))).toBe(true))
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    await screen.findByText('Oxunmamış bildiriş yoxdur')
+    fireEvent.click(screen.getByRole('button', { name: 'Hamısını göstər' }))
+    await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('false'))
+  })
+
+  it('opens the settings from a button with an icon, not a link inside the sentence', async () => {
+    net.pages[''] = { items: [line('a')], nextCursor: null }
+    page()
+    const settings = await screen.findByRole('link', { name: 'Bildiriş ayarları' })
+    expect(settings.className).toContain('btn')
+    expect(settings.querySelector('svg')).not.toBeNull()
+    expect(settings.closest('p')).toBeNull()
+  })
 })
+

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getPreferences,
@@ -9,10 +9,31 @@ import {
 } from '../api/notificationCenter'
 import { NotificationKindIcon } from '../components/NotificationKindIcon'
 import { SwitchRow } from '../components/Switch'
-import { IconBell, IconCheck, IconChevronLeft, IconChevronRight, IconSearch, IconX } from '../components/icons'
+import { IconBell, IconCheck, IconChevronLeft, IconChevronRight, IconRefresh, IconSearch, IconX } from '../components/icons'
 import { isNativeApp } from '../lib/host'
 import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported, sendTestPush } from '../lib/push'
 import { isStandalone } from '../lib/device'
+import { useLeaveGuard } from '../lib/useLeaveGuard'
+
+/** Settles with `fallback` if `p` has not settled within `ms` — a browser API that never answers must not freeze a screen. */
+export function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      () => {
+        clearTimeout(t)
+        resolve(fallback)
+      },
+    )
+  })
+}
+
+/** How long «Bu cihaz» waits for the browser to say whether it is subscribed before saying it could not tell. */
+export const DEVICE_CHECK_MS = 6000
 
 /**
  * «Bildiriş ayarları» — one person's notification settings, kept on the server for the company they are signed in to.
@@ -93,9 +114,28 @@ export function NotificationSettingsPage() {
 
   const dirty = prefs && draft ? !sameDraft(draft, draftOf(prefs)) : false
   const anyType = draft ? Object.values(draft.types).some(Boolean) : false
+  const guard = useLeaveGuard(dirty)
 
-  async function save() {
-    if (!draft || !prefs) return
+  // The save bar floats over the page's end: the page grows by its height, so it never covers the last control.
+  const barRef = useRef<HTMLDivElement>(null)
+  const [barHeight, setBarHeight] = useState(0)
+  const barShown = !!prefs?.eligible && (dirty || saving || !!saveError || savedAt !== null)
+  useLayoutEffect(() => {
+    const el = barRef.current
+    if (!barShown || !el) {
+      setBarHeight(0)
+      return
+    }
+    const measure = () => setBarHeight(el.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [barShown])
+
+  async function save(): Promise<boolean> {
+    if (!draft || !prefs) return false
     setSaving(true)
     setSaveError(null)
     const { status, data } = await savePreferences({
@@ -112,24 +152,30 @@ export function NotificationSettingsPage() {
       setPrefs(data)
       setDraft(draftOf(data))
       setSavedAt(Date.now())
-    } else {
-      const code = data && typeof data === 'object' && 'error' in data ? String(data.error) : ''
-      setSaveError(ERRORS[code] ?? 'Yadda saxlanmadı. İnternet bağlantısını yoxlayıb yenidən cəhd edin.')
+      return true
     }
+    const code = data && typeof data === 'object' && 'error' in data ? String(data.error) : ''
+    setSaveError(ERRORS[code] ?? 'Yadda saxlanmadı. İnternet bağlantısını yoxlayıb yenidən cəhd edin.')
+    return false
+  }
+
+  async function saveAndLeave() {
+    if (await save()) guard.leave()
+    else guard.stay()
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-28">
+    <div className="flex flex-col gap-5">
       <div>
         <Link
           to="/menu"
-          className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-sm font-semibold text-slate-500 active:bg-slate-100"
+          className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-sm font-semibold text-slate-600 active:bg-slate-100"
         >
           <IconChevronLeft className="h-4 w-4" aria-hidden="true" />
           Profil
         </Link>
         <h1 className="mt-1 text-xl font-extrabold text-slate-900">Bildiriş ayarları</h1>
-        <p className="text-sm text-slate-500">Hansı bildirişləri alacağınızı və necə çatacağını seçin.</p>
+        <p className="text-sm text-slate-600">Hansı bildirişləri alacağınızı və necə çatacağını seçin.</p>
       </div>
 
       <DeviceSection />
@@ -210,14 +256,17 @@ export function NotificationSettingsPage() {
               <IconBell className="h-5 w-5" aria-hidden="true" />
             </span>
             <span className="min-w-0 flex-1 font-semibold text-slate-900">Bildiriş mərkəzi</span>
-            <IconChevronRight className="h-5 w-5 text-slate-400" aria-hidden="true" />
+            <IconChevronRight className="h-5 w-5 text-slate-500" aria-hidden="true" />
           </Link>
         </>
       )}
 
+      {/* Room for the save bar below the last control — exactly its height, whatever it holds (an error makes it taller). */}
+      {barShown && <div aria-hidden="true" data-testid="save-bar-room" style={{ height: `calc(${barHeight}px + env(safe-area-inset-bottom))` }} />}
+
       {/* The save bar: visible only with something to save, above the tab bar, never covering the last control. */}
-      {prefs?.eligible && (dirty || saving || saveError || savedAt !== null) && (
-        <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 px-4">
+      {barShown && (
+        <div ref={barRef} className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 px-4">
           <div className="mx-auto flex max-w-md flex-col gap-2 rounded-3xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
             {saveError && (
               <p role="alert" className="flex items-start gap-2 px-1 text-sm text-red-700">
@@ -234,9 +283,13 @@ export function NotificationSettingsPage() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => prefs && setDraft(draftOf(prefs))}
+                  onClick={() => {
+                    if (!prefs) return
+                    setDraft(draftOf(prefs))
+                    setSaveError(null)
+                  }}
                   disabled={saving}
-                  className="min-h-11 flex-1 rounded-2xl px-4 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 active:bg-slate-50 disabled:opacity-50"
+                  className="min-h-11 flex-1 rounded-2xl px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 active:bg-slate-50 disabled:opacity-50"
                 >
                   Ləğv et
                 </button>
@@ -253,6 +306,79 @@ export function NotificationSettingsPage() {
           </div>
         </div>
       )}
+
+      {guard.pending && (
+        <LeaveDialog saving={saving} onSave={() => void saveAndLeave()} onLeave={guard.leave} onStay={guard.stay} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * «Dəyişikliklər yadda saxlanmayıb» — asked when the person tries to leave with changes (a link, the tab bar, back).
+ * The safe answer has the focus; Escape stays.
+ */
+function LeaveDialog({
+  saving,
+  onSave,
+  onLeave,
+  onStay,
+}: {
+  saving: boolean
+  onSave: () => void
+  onLeave: () => void
+  onStay: () => void
+}) {
+  const stayRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    stayRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onStay()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onStay])
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" onClick={onStay}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="leave-title"
+        aria-describedby="leave-text"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-xl"
+      >
+        <h2 id="leave-title" className="text-lg font-bold text-slate-900">Dəyişikliklər yadda saxlanmayıb</h2>
+        <p id="leave-text" className="mt-1 text-sm leading-relaxed text-slate-600">
+          Səhifədən çıxsanız, bildiriş ayarlarında etdiyiniz dəyişikliklər itəcək.
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="min-h-11 rounded-2xl bg-blue-600 px-4 text-sm font-bold text-white active:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Yadda saxlanır…' : 'Yadda saxla və çıx'}
+          </button>
+          <button
+            type="button"
+            onClick={onLeave}
+            disabled={saving}
+            className="min-h-11 rounded-2xl px-4 text-sm font-semibold text-red-700 ring-1 ring-red-200 active:bg-red-50 disabled:opacity-50"
+          >
+            Saxlamadan çıx
+          </button>
+          <button
+            ref={stayRef}
+            type="button"
+            onClick={onStay}
+            className="min-h-11 rounded-2xl px-4 text-sm font-semibold text-slate-700 active:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+          >
+            Səhifədə qal
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -264,7 +390,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
       <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
         {children}
       </div>
-      {hint && <p className="px-1 pt-2 text-xs text-slate-500">{hint}</p>}
+      {hint && <p className="px-1 pt-2 text-[13px] leading-snug text-slate-600">{hint}</p>}
     </section>
   )
 }
@@ -344,7 +470,7 @@ function BranchSection({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-slate-900">{o.label}</span>
-                <span className="mt-0.5 block text-sm text-slate-500">{o.description}</span>
+                <span className="mt-0.5 block text-sm text-slate-600">{o.description}</span>
               </span>
             </button>
           )
@@ -403,13 +529,13 @@ function BranchPicker({
       <div className="border-b border-slate-100 p-3">
         <label className="relative block">
           <span className="sr-only">Filial axtar</span>
-          <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+          <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filial axtar"
-            className="min-h-11 w-full rounded-2xl bg-slate-50 pl-9 pr-3 text-base text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+            className="min-h-11 w-full rounded-2xl bg-slate-50 pl-9 pr-3 text-base text-slate-900 placeholder:text-slate-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
           />
         </label>
         <div className="mt-2 flex items-center gap-2">
@@ -436,12 +562,12 @@ function BranchPicker({
 
       <div className="max-h-80 overflow-y-auto overscroll-contain">
         {visible.length === 0 && (
-          <p className="p-4 text-center text-sm text-slate-500">«{query}» adlı filial tapılmadı.</p>
+          <p className="p-4 text-center text-sm text-slate-600">«{query}» adlı filial tapılmadı.</p>
         )}
         {groups.map(([key, g]) => (
           <div key={key || 'none'} role="group" aria-label={grouped ? g.name : undefined}>
             {grouped && (
-              <div className="sticky top-0 bg-slate-50/95 px-4 py-1.5 text-xs font-semibold text-slate-500 backdrop-blur">
+              <div className="sticky top-0 bg-slate-50/95 px-4 py-1.5 text-xs font-semibold text-slate-600 backdrop-blur">
                 {g.name}
               </div>
             )}
@@ -483,16 +609,28 @@ function BranchPicker({
  * which a web page cannot open, so the steps are given instead.
  */
 function DeviceSection() {
-  const [on, setOn] = useState<boolean | null>(null)
+  // 'checking' never stays: the browser gets DEVICE_CHECK_MS to answer, then it is 'unknown' with a way to ask again.
+  const [device, setDevice] = useState<'checking' | 'on' | 'off' | 'unknown'>('checking')
+  const on = device === 'on'
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const supported = pushSupported()
   const [denied, setDenied] = useState(pushPermission() === 'denied')
   const native = isNativeApp()
 
-  useEffect(() => {
-    void isSubscribed().then(setOn)
+  const check = useCallback(async () => {
+    setDevice('checking')
+    const answer = await within(
+      isSubscribed().then((v): 'on' | 'off' => (v ? 'on' : 'off')),
+      DEVICE_CHECK_MS,
+      'unknown' as const,
+    )
+    setDevice(answer)
   }, [])
+
+  useEffect(() => {
+    if (supported) void check()
+  }, [check, supported])
 
   async function turnOn() {
     setBusy(true)
@@ -500,7 +638,7 @@ function DeviceSection() {
     const r = await enablePush()
     setBusy(false)
     if (r === 'ok') {
-      setOn(true)
+      setDevice('on')
     } else if (r === 'denied') {
       setDenied(true)
     } else if (r === 'disabled') {
@@ -516,13 +654,13 @@ function DeviceSection() {
     setBusy(true)
     await disablePush()
     setBusy(false)
-    setOn(false)
+    setDevice('off')
   }
 
   async function test() {
     setBusy(true)
     setMsg(null)
-    const reached = await sendTestPush()
+    const reached = await within(sendTestPush(), 15000, null)
     setBusy(false)
     if (reached === null) setMsg('Sınaq bildirişi göndərilmədi. Bir azdan yenidən cəhd edin.')
     else if (reached === 0) setMsg('Bu cihazın abunəsi tapılmadı — bildirişləri söndürüb yenidən açın.')
@@ -546,13 +684,24 @@ function DeviceSection() {
         ? 'Telefonun Ayarlar → Tətbiqlər → QRLog → Bildirişlər bölməsində icazəni açın, sonra bura qayıdın.'
         : 'Brauzerin ünvan sətrindəki kilid işarəsinə toxunun → Bildirişlər → İcazə verin. Sonra səhifəni yeniləyin.',
     }
+  } else if (device === 'checking') {
+    state = { tone: 'off', title: 'Yoxlanılır…', text: 'Bu cihazın bildiriş icazəsinə və abunəsinə baxılır.' }
+  } else if (device === 'unknown') {
+    state = {
+      tone: 'warn',
+      title: 'Vəziyyəti öyrənmək alınmadı',
+      text: 'Brauzer vaxtında cavab vermədi. Yenidən yoxlayın; alınmasa, səhifəni yeniləyin.',
+    }
   } else if (on) {
     state = { tone: 'ok', title: 'Bu cihazda bildirişlər açıqdır', text: 'Elanlar, növbə xatırlatmaları və seçdiyiniz bildirişlər bu telefona gəlir.' }
   } else {
     state = { tone: 'off', title: 'Bu cihazda bildirişlər söndürülüb', text: 'Açsanız, elanlar, növbə xatırlatmaları və seçdiyiniz bildirişlər bu telefona gələcək.' }
   }
 
-  const dot = state.tone === 'ok' ? 'bg-green-600' : state.tone === 'warn' ? 'bg-amber-500' : 'bg-slate-300'
+  const dot =
+    device === 'checking' && supported && !denied
+      ? 'bg-slate-400 animate-pulse motion-reduce:animate-none'
+      : state.tone === 'ok' ? 'bg-green-600' : state.tone === 'warn' ? 'bg-amber-500' : 'bg-slate-400'
 
   return (
     <section aria-labelledby="device-title">
@@ -561,12 +710,24 @@ function DeviceSection() {
         <div className="flex items-start gap-3">
           <span aria-hidden="true" className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-slate-900">{on === null && supported && !denied ? 'Yoxlanılır…' : state.title}</div>
-            <p className="mt-0.5 text-sm leading-snug text-slate-500">{state.text}</p>
-            {msg && <p role="status" className="mt-2 text-sm text-slate-600">{msg}</p>}
+            <div className="font-semibold text-slate-900" aria-live="polite">{state.title}</div>
+            <p className="mt-0.5 text-sm leading-snug text-slate-600">{state.text}</p>
+            {msg && <p role="status" className="mt-2 text-sm text-slate-700">{msg}</p>}
           </div>
         </div>
-        {supported && on !== null && (
+        {supported && !denied && device === 'unknown' && (
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => void check()}
+              className="inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 active:bg-blue-50"
+            >
+              <IconRefresh className="h-4 w-4" aria-hidden="true" />
+              Yenidən yoxla
+            </button>
+          </div>
+        )}
+        {supported && (device === 'on' || device === 'off' || denied) && (
           <div className="mt-3 flex gap-2">
             {on ? (
               <>
@@ -574,7 +735,7 @@ function DeviceSection() {
                   type="button"
                   onClick={() => void test()}
                   disabled={busy}
-                  className="min-h-11 rounded-2xl px-4 text-sm font-semibold text-blue-700 ring-1 ring-blue-100 active:bg-blue-50 disabled:opacity-50"
+                  className="min-h-11 rounded-2xl px-4 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 active:bg-blue-50 disabled:opacity-50"
                 >
                   Sınaq bildirişi
                 </button>
@@ -582,7 +743,7 @@ function DeviceSection() {
                   type="button"
                   onClick={() => void turnOff()}
                   disabled={busy}
-                  className="min-h-11 rounded-2xl px-4 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 active:bg-slate-50 disabled:opacity-50"
+                  className="min-h-11 rounded-2xl px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 active:bg-slate-50 disabled:opacity-50"
                 >
                   Bu cihazda söndür
                 </button>

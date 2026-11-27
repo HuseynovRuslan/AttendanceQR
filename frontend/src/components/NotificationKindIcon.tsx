@@ -32,3 +32,27 @@ export function NotificationKindIcon({ typeKey, size = 36, label }: { typeKey: s
     </span>
   )
 }
+
+/**
+ * An entry's mark: the lead line's type, and — when the entry is a check-in together with its lateness — the check-in's
+ * small mark on its corner, so one row visibly holds both. `ring` is the row's background, to cut the small mark out.
+ */
+export function NotificationEntryIcon({ typeKeys, size = 36, ring = '#fff' }: { typeKeys: string[]; size?: number; ring?: string }) {
+  const lead = typeKeys.includes('attendance.late') ? 'attendance.late' : typeKeys[0]
+  const extra = typeKeys.find((k) => k !== lead)
+  return (
+    <span aria-hidden="true" style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
+      <NotificationKindIcon typeKey={lead} size={size} />
+      {extra && (
+        <span
+          style={{
+            position: 'absolute', right: -4, bottom: -4, display: 'inline-flex', borderRadius: 999,
+            boxShadow: `0 0 0 2px ${ring}`,
+          }}
+        >
+          <NotificationKindIcon typeKey={extra} size={Math.round(size * 0.5)} />
+        </span>
+      )}
+    </span>
+  )
+}

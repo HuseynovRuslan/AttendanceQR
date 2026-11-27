@@ -9,16 +9,19 @@ import {
   type CenterNotification,
   type PreferenceBranch,
 } from '../../api/notificationCenter'
-import { NotificationKindIcon } from '../../components/NotificationKindIcon'
-import { IconCheck, IconRefresh } from '../../components/icons'
+import { NotificationEntryIcon } from '../../components/NotificationKindIcon'
+import { IconCheck, IconRefresh, IconSliders } from '../../components/icons'
 import { subscribeLive } from '../../lib/notificationHub'
-import { groupByDay, lookOf, metaLine } from '../../lib/notificationKinds'
+import { groupByDay, groupByEvent, lookOf, metaLine, unreadEntries, type EventGroup } from '../../lib/notificationKinds'
 import { emitNotificationsChanged } from '../../lib/notificationEvents'
 
 /**
  * «Bildirişlər» — the person's notification history: newest first, grouped by company day, read and unread, filtered
- * by type and branch, paged by the server (a cursor, so new arrivals never shift a page). New notifications appear at
- * the top as they are written (the live channel); after a reconnect the first page is fetched again.
+ * by read state, type and branch, paged by the server (a cursor, so new arrivals never shift a page). New notifications
+ * appear at the top as they are written (the live channel); after a reconnect the first page is fetched again.
+ *
+ * A check-in and its lateness — two lines, from two settings — are one entry when both are there: the lateness leads
+ * («… işə 25 dəqiqə gecikdi» says the arrival too) and the check-in's mark sits on its corner. Opening it reads both.
  *
  * The server lists only what the reader may still see; a click opens the person's card, which checks its own scope
  * again — a notification is never a way around a permission.
@@ -30,28 +33,77 @@ const TYPES: { key: string; label: string }[] = [
   { key: 'attendance.late', label: 'Gecikmə' },
 ]
 
+/** Unread: a blue-tinted row with a bar on its leading edge, bold text and a dot — never colour alone. */
+const UNREAD_BG = '#EEF4FF'
+const UNREAD_BAR = '#2563EB'
+
+type Line = CenterNotification
+
+function asLine(x: {
+  id: string | null
+  typeKey: string
+  title: string
+  body: string
+  branchName: string | null
+  occurredAtUtc: string
+  wasOffline: boolean
+  minutes: number | null
+  url: string | null
+  eventId?: string | null
+}): Line {
+  return {
+    id: x.id!,
+    typeKey: x.typeKey,
+    title: x.title,
+    body: x.body,
+    subjectEmployeeId: null,
+    subjectName: null,
+    locationId: null,
+    branchName: x.branchName,
+    occurredAtUtc: x.occurredAtUtc,
+    wasOffline: x.wasOffline,
+    minutes: x.minutes,
+    url: x.url,
+    createdAtUtc: new Date().toISOString(),
+    readAtUtc: null,
+    eventId: x.eventId ?? null,
+  }
+}
+
 export function NotificationCenterPage() {
   const navigate = useNavigate()
   const [type, setType] = useState('')
   const [branch, setBranch] = useState('')
+  const [onlyUnread, setOnlyUnread] = useState(false)
   const [branches, setBranches] = useState<PreferenceBranch[]>([])
-  const [items, setItems] = useState<CenterNotification[]>([])
+  const [items, setItems] = useState<Line[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(false)
   const [marking, setMarking] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  // Unread anywhere in the history, not just on the loaded page — what «Hamısını oxunmuş et» acts on.
+  // Unread entries anywhere in the history, not just on the loaded page — what «Hamısını oxunmuş et» acts on.
   const [serverUnread, setServerUnread] = useState(0)
+  const [serverUnreadMore, setServerUnreadMore] = useState(false)
   const [fresh, setFresh] = useState(0)
   const filters = useRef({ type, branch })
   filters.current = { type, branch }
 
+  const refreshCount = useCallback(async () => {
+    const count = await getUnreadCount()
+    if (count.status === 200 && typeof count.data?.unread === 'number') {
+      setServerUnread(count.data.unread)
+      setServerUnreadMore(!!count.data.more)
+    }
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(false)
-    const { status, data } = await getCenter({ type: type || undefined, locationId: branch || undefined, limit: 30 })
+    const { status, data } = await getCenter({
+      type: type || undefined, locationId: branch || undefined, unread: onlyUnread || undefined, limit: 30,
+    })
     setLoading(false)
     if (status === 200 && data) {
       setItems(data.items)
@@ -60,9 +112,8 @@ export function NotificationCenterPage() {
     } else {
       setError(true)
     }
-    const count = await getUnreadCount()
-    if (count.status === 200 && typeof count.data?.unread === 'number') setServerUnread(count.data.unread)
-  }, [type, branch])
+    await refreshCount()
+  }, [type, branch, onlyUnread, refreshCount])
 
   useEffect(() => {
     void load()
@@ -74,38 +125,21 @@ export function NotificationCenterPage() {
     })
   }, [])
 
-  // Live: a new line for the current filter goes to the top; a pop-up of a type filtered out only bumps nothing.
+  // Live: a new line for the current filter goes to the top (new lines are unread, so the unread filter keeps them).
   useEffect(
     () =>
       subscribeLive({
         onItems: (live) => {
           const { type: t, branch: b } = filters.current
-          const add = live
-            .filter((x) => x.id && (!t || x.typeKey === t) && !b)
-            .map<CenterNotification>((x) => ({
-              id: x.id!,
-              typeKey: x.typeKey,
-              title: x.title,
-              body: x.body,
-              subjectEmployeeId: null,
-              subjectName: null,
-              locationId: null,
-              branchName: x.branchName,
-              occurredAtUtc: x.occurredAtUtc,
-              wasOffline: x.wasOffline,
-              minutes: x.minutes,
-              url: x.url,
-              createdAtUtc: new Date().toISOString(),
-              readAtUtc: null,
-            }))
-          if (add.length > 0) {
+          const lines = live.filter((x) => x.id)
+          const add = lines.filter((x) => !t || x.typeKey === t).map(asLine)
+          if (add.length > 0 && !b) {
             setItems((cur) => [...add.filter((a) => !cur.some((c) => c.id === a.id)), ...cur])
-            setFresh((n) => n + add.length)
+            setFresh((n) => n + groupByEvent(add).length)
           }
-          const lines = live.filter((x) => x.id).length
-          if (lines > 0) setServerUnread((n) => n + lines)
+          if (lines.length > 0) setServerUnread((n) => n + groupByEvent(lines.map(asLine)).length)
           // A branch filter cannot be judged from the pop-up (it carries no branch id): reload instead.
-          if (b && live.some((x) => x.id)) void load()
+          if (b && lines.length > 0) void load()
         },
         onReconnected: () => void load(),
       }),
@@ -116,7 +150,9 @@ export function NotificationCenterPage() {
     if (!cursor) return
     setLoadingMore(true)
     setActionError(null)
-    const { status, data } = await getCenter({ type: type || undefined, locationId: branch || undefined, cursor, limit: 30 })
+    const { status, data } = await getCenter({
+      type: type || undefined, locationId: branch || undefined, unread: onlyUnread || undefined, cursor, limit: 30,
+    })
     setLoadingMore(false)
     if (status === 200 && data) {
       setItems((cur) => [...cur, ...data.items.filter((d) => !cur.some((c) => c.id === d.id))])
@@ -126,13 +162,16 @@ export function NotificationCenterPage() {
     }
   }
 
-  async function open(n: CenterNotification) {
-    if (!n.readAtUtc) {
-      setItems((cur) => cur.map((c) => (c.id === n.id ? { ...c, readAtUtc: new Date().toISOString() } : c)))
+  function open(g: EventGroup<Line>) {
+    const unreadIds = g.members.filter((m) => !m.readAtUtc).map((m) => m.id)
+    if (unreadIds.length > 0) {
+      const now = new Date().toISOString()
+      // Stays in place (also under «Oxunmayıb»), only shown as read: a row never jumps away under the finger.
+      setItems((cur) => cur.map((c) => (unreadIds.includes(c.id) ? { ...c, readAtUtc: now } : c)))
       setServerUnread((u) => Math.max(0, u - 1))
-      void markRead(n.id).then(() => emitNotificationsChanged())
+      void Promise.all(unreadIds.map((id) => markRead(id))).then(() => emitNotificationsChanged())
     }
-    if (n.url) navigate(n.url)
+    if (g.lead.url) navigate(g.lead.url)
   }
 
   async function readAll() {
@@ -142,41 +181,84 @@ export function NotificationCenterPage() {
     setMarking(false)
     if (status === 200) {
       const now = new Date().toISOString()
-      setItems((cur) => cur.map((c) => (c.readAtUtc ? c : { ...c, readAtUtc: now })))
-      setServerUnread(0)
+      if (onlyUnread) {
+        setItems([])
+        setCursor(null)
+      } else {
+        setItems((cur) => cur.map((c) => (c.readAtUtc ? c : { ...c, readAtUtc: now })))
+      }
+      await refreshCount()
       emitNotificationsChanged()
     } else {
       setActionError('Oxunmuş kimi qeyd olunmadı. İnternet bağlantısını yoxlayıb yenidən cəhd edin.')
     }
   }
 
-  const unread = Math.max(items.filter((i) => !i.readAtUtc).length, serverUnread)
-  const groups = groupByDay(items, (i) => i.createdAtUtc)
+  const entries = groupByEvent(items)
+  const unread = Math.max(unreadEntries(items), serverUnread)
+  const unreadLabel = serverUnreadMore || unread > 99 ? '99+' : String(unread)
+  const days = groupByDay(entries, (g) => g.lead.createdAtUtc)
+  const filtered = !!(type || branch || onlyUnread)
 
   return (
     <div style={{ maxWidth: 760 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{ flex: '1 1 260px', minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--c900)', letterSpacing: '-0.01em' }}>Bildirişlər</h1>
-          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-            Səlahiyyətinizdə olan filialların işçiləri üzrə giriş, çıxış və gecikmə bildirişləri.{' '}
-            <Link to="/menu/notifications" style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}>Bildiriş ayarları</Link>
-          </div>
+          <p style={{ fontSize: 13.5, lineHeight: 1.5, marginTop: 4, marginBottom: 0, color: 'var(--c600)' }}>
+            Səlahiyyətinizdə olan filialların işçiləri üzrə giriş, çıxış və gecikmə bildirişləri.
+          </p>
         </div>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => void readAll()}
-          disabled={marking || unread === 0}
-          style={{ minHeight: 44 }}
-        >
-          <IconCheck />
-          Hamısını oxunmuş et
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link to="/menu/notifications" className="btn" style={{ minHeight: 44 }}>
+            <IconSliders aria-hidden="true" />
+            Bildiriş ayarları
+          </Link>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void readAll()}
+            disabled={marking || unread === 0}
+            style={{ minHeight: 44 }}
+          >
+            <IconCheck aria-hidden="true" />
+            {marking ? 'Qeyd olunur…' : 'Hamısını oxunmuş et'}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-        <div className="seg" role="group" aria-label="Bildiriş növü" style={{ flex: '1 1 320px' }}>
+        <button
+          type="button"
+          aria-pressed={onlyUnread}
+          onClick={() => setOnlyUnread((v) => !v)}
+          className="notif-unread-toggle"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44, padding: '0 14px', borderRadius: 12,
+            border: `1px solid ${onlyUnread ? UNREAD_BAR : 'var(--c200)'}`,
+            background: onlyUnread ? UNREAD_BAR : 'var(--white, #fff)',
+            color: onlyUnread ? '#fff' : 'var(--c700)',
+            fontWeight: 700, fontSize: 13, cursor: 'pointer', font: 'inherit', whiteSpace: 'nowrap',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{ width: 8, height: 8, borderRadius: 999, background: onlyUnread ? '#fff' : UNREAD_BAR, flex: 'none' }}
+          />
+          Oxunmayıb
+          {unread > 0 && (
+            <span
+              style={{
+                minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999, display: 'inline-flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 12, fontVariantNumeric: 'tabular-nums',
+                background: onlyUnread ? 'rgba(255,255,255,.22)' : '#DBE7FE', color: onlyUnread ? '#fff' : '#1E40AF',
+              }}
+            >
+              {unreadLabel}
+            </span>
+          )}
+        </button>
+        <div className="seg" role="group" aria-label="Bildiriş növü" style={{ flex: '1 1 300px' }}>
           {TYPES.map((t) => (
             <button
               key={t.key || 'all'}
@@ -184,7 +266,7 @@ export function NotificationCenterPage() {
               className="seg-btn"
               aria-pressed={type === t.key}
               onClick={() => setType(t.key)}
-              style={{ minHeight: 40 }}
+              style={{ minHeight: 40, color: type === t.key ? undefined : 'var(--c600)' }}
             >
               {t.label}
             </button>
@@ -227,67 +309,40 @@ export function NotificationCenterPage() {
       {!loading && !error && items.length === 0 && (
         <div className="card card-pad" style={{ textAlign: 'center', padding: '36px 20px' }}>
           <div style={{ fontWeight: 700, color: 'var(--c900)' }}>
-            {type || branch ? 'Bu seçimə uyğun bildiriş yoxdur' : 'Hələ bildiriş yoxdur'}
+            {onlyUnread && !type && !branch
+              ? 'Oxunmamış bildiriş yoxdur'
+              : filtered
+                ? 'Bu seçimə uyğun bildiriş yoxdur'
+                : 'Hələ bildiriş yoxdur'}
           </div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
-            {type || branch
-              ? 'Filtri dəyişin və ya «Hamısı»nı seçin.'
-              : 'İşçi giriş, çıxış etdikdə və ya gecikdikdə bildirişlər burada görünəcək. Hansı bildirişləri alacağınızı ayarlarda seçin.'}
+          <div style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.5, color: 'var(--c600)' }}>
+            {onlyUnread && !type && !branch
+              ? 'Hamısını oxumusunuz. Köhnə bildirişlər «Oxunmayıb» filtri söndürüləndə görünür.'
+              : filtered
+                ? 'Filtri dəyişin və ya söndürün.'
+                : 'İşçi giriş, çıxış etdikdə və ya gecikdikdə bildirişlər burada görünəcək. Hansı bildirişləri alacağınızı ayarlarda seçin.'}
           </div>
-          {!type && !branch && (
-            <Link to="/menu/notifications" className="btn" style={{ marginTop: 14, display: 'inline-flex' }}>
-              Bildiriş ayarları
-            </Link>
+          {onlyUnread ? (
+            <button type="button" className="btn" onClick={() => setOnlyUnread(false)} style={{ marginTop: 14, minHeight: 44 }}>
+              Hamısını göstər
+            </button>
+          ) : (
+            !filtered && (
+              <Link to="/menu/notifications" className="btn" style={{ marginTop: 14, display: 'inline-flex', minHeight: 44 }}>
+                <IconSliders aria-hidden="true" />
+                Bildiriş ayarları
+              </Link>
+            )
           )}
         </div>
       )}
 
-      {groups.map((g) => (
-        <section key={g.day} aria-label={g.heading} style={{ marginBottom: 18 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: 'var(--c500)', margin: '0 0 8px 4px' }}>{g.heading}</h2>
+      {days.map((d) => (
+        <section key={d.day} aria-label={d.heading} style={{ marginBottom: 18 }}>
+          <h2 style={{ fontSize: 13, fontWeight: 700, color: 'var(--c600)', margin: '0 0 8px 4px' }}>{d.heading}</h2>
           <div className="card" style={{ overflow: 'hidden' }}>
-            {g.items.map((n, i) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => void open(n)}
-                className="notif-row"
-                aria-label={`${lookOf(n.typeKey).label}: ${n.body} ${metaLine(n.branchName, n.occurredAtUtc, n.wasOffline)}${n.readAtUtc ? '' : ', oxunmayıb'}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  width: '100%',
-                  padding: '12px 16px',
-                  minHeight: 60,
-                  border: 'none',
-                  borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
-                  background: n.readAtUtc ? 'var(--white, #fff)' : 'var(--c50)',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  font: 'inherit',
-                }}
-              >
-                <NotificationKindIcon typeKey={n.typeKey} />
-                {/* One sentence carries it — «Əliyev Elvin işə 25 dəqiqə gecikdi» — so it is the line; the type is the
-                    icon and the accessible name, not a bold «İşçi gecikdi» above it saying the same thing again. */}
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span
-                    style={{
-                      display: 'block', fontWeight: n.readAtUtc ? 500 : 700, color: n.readAtUtc ? 'var(--c700)' : 'var(--c900)',
-                      fontSize: 14.5, lineHeight: 1.4, overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {n.body}
-                  </span>
-                  <span style={{ display: 'block', color: 'var(--c500)', fontSize: 12.5, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>
-                    {metaLine(n.branchName, n.occurredAtUtc, n.wasOffline)}
-                  </span>
-                </span>
-                {!n.readAtUtc && (
-                  <span aria-hidden="true" style={{ flex: 'none', width: 9, height: 9, borderRadius: 999, background: 'var(--blue, #2563EB)', marginTop: 6 }} />
-                )}
-              </button>
+            {d.items.map((g, i) => (
+              <EntryRow key={g.key} entry={g} first={i === 0} onOpen={() => open(g)} />
             ))}
           </div>
         </section>
@@ -301,6 +356,64 @@ export function NotificationCenterPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function EntryRow({ entry, first, onOpen }: { entry: EventGroup<Line>; first: boolean; onOpen: () => void }) {
+  const n = entry.lead
+  const unread = entry.unread
+  const kinds = entry.members.map((m) => m.typeKey)
+  const kindLabel = [...new Set(kinds.map((k) => lookOf(k).label))].join(' və ')
+  const meta = metaLine(n.branchName, n.occurredAtUtc, n.wasOffline)
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="notif-row"
+      data-unread={unread ? 'true' : undefined}
+      aria-label={`${kindLabel}: ${n.body} ${meta}${unread ? ', oxunmayıb' : ''}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        width: '100%',
+        padding: '12px 16px',
+        minHeight: 64,
+        border: 'none',
+        borderTop: first ? 'none' : '1px solid var(--c100)',
+        // theme.css .notif-row paints it, and darkens it a touch on hover / press.
+        ['--row-bg' as string]: unread ? UNREAD_BG : '#fff',
+        boxShadow: unread ? `inset 3px 0 0 ${UNREAD_BAR}` : undefined,
+        textAlign: 'left',
+        cursor: 'pointer',
+        font: 'inherit',
+      }}
+    >
+      <NotificationEntryIcon typeKeys={kinds} ring={unread ? UNREAD_BG : '#fff'} />
+      {/* One sentence carries it — «Əliyev Elvin işə 25 dəqiqə gecikdi» — so it is the line; the type is the icon and the
+          accessible name, not a bold «İşçi gecikdi» above it saying the same thing again. */}
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span
+          style={{
+            display: 'block', fontWeight: unread ? 700 : 500, color: unread ? 'var(--c900)' : 'var(--c600)',
+            fontSize: 14.5, lineHeight: 1.4, overflowWrap: 'anywhere',
+          }}
+        >
+          {n.body}
+        </span>
+        <span
+          style={{
+            display: 'block', color: unread ? 'var(--c600)' : 'var(--c500)', fontSize: 12.5, marginTop: 3,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {meta}
+        </span>
+      </span>
+      {unread && (
+        <span aria-hidden="true" style={{ flex: 'none', width: 10, height: 10, borderRadius: 999, background: UNREAD_BAR }} />
+      )}
+    </button>
   )
 }
 

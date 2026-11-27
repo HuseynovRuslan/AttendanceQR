@@ -37,7 +37,7 @@ export function SwitchRow({
       <span className="min-w-0 flex-1">
         <span id={`${id}-label`} className="block font-semibold text-slate-900">{label}</span>
         {description && (
-          <span id={`${id}-desc`} className="mt-0.5 block text-sm leading-snug text-slate-500">{description}</span>
+          <span id={`${id}-desc`} className="mt-0.5 block text-sm leading-snug text-slate-600">{description}</span>
         )}
       </span>
       <span

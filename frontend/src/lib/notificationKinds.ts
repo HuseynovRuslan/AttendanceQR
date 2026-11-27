@@ -71,3 +71,51 @@ export function metaLine(branchName: string | null, occurredAtUtc: string, wasOf
   if (wasOffline) parts.push('oflayn qeyd')
   return parts.join(' · ')
 }
+
+/** What a line needs to be grouped with the other lines about the same scan. */
+export interface Groupable {
+  id: string
+  typeKey: string
+  readAtUtc: string | null
+  /** The scan it is about: a check-in and its lateness share it. Absent on an old line — then it stands alone. */
+  eventId?: string | null
+}
+
+/** One entry of the list: a line, or the lines about one scan (a check-in and its lateness). */
+export interface EventGroup<T extends Groupable> {
+  key: string
+  /** The line the entry shows: the lateness when there is one — «… işə 25 dəqiqə gecikdi» says the arrival too. */
+  lead: T
+  /** Every line of the entry, lead included, in list order. */
+  members: T[]
+  unread: boolean
+}
+
+/**
+ * The lines about the same scan as one entry, at the place the first of them appears. Only lines that are there are
+ * grouped — who receives what (settings) and what is shown (filters) decide the lines, this only draws them: with the
+ * «Gecikmə» filter, or for somebody who switched check-ins off, the lateness stands alone.
+ */
+export function groupByEvent<T extends Groupable>(items: T[]): EventGroup<T>[] {
+  const groups: EventGroup<T>[] = []
+  const byEvent = new Map<string, EventGroup<T>>()
+  for (const item of items) {
+    const key = item.eventId ? `e:${item.eventId}` : `n:${item.id}`
+    const existing = byEvent.get(key)
+    if (existing) {
+      existing.members.push(item)
+      if (item.typeKey === 'attendance.late') existing.lead = item
+      existing.unread = existing.unread || !item.readAtUtc
+      continue
+    }
+    const group: EventGroup<T> = { key, lead: item, members: [item], unread: !item.readAtUtc }
+    byEvent.set(key, group)
+    groups.push(group)
+  }
+  return groups
+}
+
+/** How many entries are unread among these lines — what the badge counts, so it matches what the list shows. */
+export function unreadEntries<T extends Groupable>(items: T[]): number {
+  return groupByEvent(items).filter((g) => g.unread).length
+}

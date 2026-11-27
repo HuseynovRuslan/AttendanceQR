@@ -27,6 +27,8 @@ export interface CenterNotification {
   url: string | null
   createdAtUtc: string
   readAtUtc: string | null
+  /** The scan it is about — a check-in and its lateness share it, and the lists show them as one entry. */
+  eventId?: string | null
 }
 
 export interface CenterPage {
@@ -54,7 +56,8 @@ export function getCenter(q: CenterQuery = {}) {
 }
 
 export function getUnreadCount() {
-  // `more`: the server counts only as far as the badge shows (99) — beyond that it is «99+».
+  // Entries, not lines: a check-in and its lateness are one (as the lists show them). `more`: the server counts only as
+  // far as the badge shows (99) — beyond that it is «99+».
   return apiRequest<{ unread: number; more?: boolean }>('/api/notifications/unread-count')
 }
 

@@ -1,21 +1,35 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getNotifications, type NotificationsSummary } from '../api/notifications'
-import { getCenter, getUnreadCount, markRead, type CenterNotification } from '../api/notificationCenter'
+import {
+  getCenter,
+  getPreferences,
+  getUnreadCount,
+  markRead,
+  type CenterNotification,
+  type NotificationPreferences,
+} from '../api/notificationCenter'
 import { subscribeLive, type LiveItem } from '../lib/notificationHub'
-import { metaLine } from '../lib/notificationKinds'
+import { groupByEvent, lookOf, metaLine, type EventGroup } from '../lib/notificationKinds'
+import { activityBesideFeed, feedCoversOffice, toastOf } from '../lib/bellActivity'
 import { emitNotificationsChanged, onNotificationsChanged } from '../lib/notificationEvents'
 import { usePolling } from '../lib/usePolling'
 import { IconBell, IconX } from './icons'
-import { NotificationKindIcon } from './NotificationKindIcon'
+import { NotificationEntryIcon } from './NotificationKindIcon'
 
-const SEC: CSSProperties = { padding: '10px 14px 4px', fontSize: 12, fontWeight: 700, color: 'var(--c500)' }
+const SEC: CSSProperties = { padding: '10px 14px 4px', fontSize: 12, fontWeight: 700, color: 'var(--c600)' }
+const UNREAD_BG = '#EEF4FF'
+const UNREAD_BAR = '#2563EB'
+
 const ITEM: CSSProperties = { display: 'block', padding: '10px 14px', fontSize: 13, color: 'var(--c700)', textDecoration: 'none', borderBottom: '1px solid var(--c50)' }
 
 /**
  * The admin bell. Two things in one place, kept apart inside:
- *   • «Bildirişlər» — the person's own notification center (persisted, read/unread): the latest few and a link to all;
- *   • «Diqqət tələb edir» / «Son hərəkət» — the live, computed list of what needs doing today, as before.
+ *   • «Bildirişlər» — the person's own notification center (persisted, read/unread): the latest few entries (a check-in
+ *     and its lateness are one) and a link to all;
+ *   • «Diqqət tələb edir» / «Son hərəkət» — the live, computed list of what needs doing today, as before. «Son hərəkət»
+ *     drops what the notifications above already say (lib/bellActivity) — field visits and anything the person's
+ *     settings leave out stay.
  * The badge counts both. New notifications arrive over the live channel the moment they are written (with a short
  * pop-up), the count is also polled as a fallback, and a read mark anywhere updates it at once.
  */
@@ -26,7 +40,8 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
   const [unreadMore, setUnreadMore] = useState(false)
   const [latest, setLatest] = useState<CenterNotification[] | null>(null)
   const [open, setOpen] = useState(false)
-  const [toast, setToast] = useState<LiveItem | null>(null)
+  const [toast, setToast] = useState<{ lead: LiveItem; others: number } | null>(null)
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -54,8 +69,9 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
       subscribeLive({
         onItems: (items) => {
           const lines = items.filter((i) => i.id)
-          if (lines.length > 0) setUnread((n) => n + lines.length)
-          setToast(items[items.length - 1])
+          // Entries, as the server counts them: a check-in and its lateness are one.
+          if (lines.length > 0) setUnread((n) => n + groupByEvent(lines.map((l) => ({ ...l, id: l.id!, readAtUtc: null }))).length)
+          setToast(toastOf(items))
           setLatest(null)
         },
         onReconnected: () => void refreshUnread(),
@@ -73,10 +89,18 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
 
   useEffect(() => {
     if (!open || latest) return
-    void getCenter({ limit: 5 }).then(({ status, data }) => {
+    void getCenter({ limit: 8 }).then(({ status, data }) => {
       if (status === 200 && data) setLatest(data.items)
     })
   }, [open, latest])
+
+  // What the person receives decides what «Son hərəkət» still has to say. Read once, when the bell is first opened.
+  useEffect(() => {
+    if (!open || !actionItems || prefs) return
+    void getPreferences().then(({ status, data }) => {
+      if (status === 200 && data) setPrefs(data)
+    })
+  }, [open, actionItems, prefs])
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -96,14 +120,22 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
     }
   }, [open])
 
-  function openLine(n: CenterNotification) {
+  function openEntry(g: EventGroup<CenterNotification>) {
     setOpen(false)
-    if (!n.readAtUtc) {
-      setLatest((cur) => cur?.map((c) => (c.id === n.id ? { ...c, readAtUtc: new Date().toISOString() } : c)) ?? null)
-      void markRead(n.id).then(() => emitNotificationsChanged())
+    const ids = g.members.filter((m) => !m.readAtUtc).map((m) => m.id)
+    if (ids.length > 0) {
+      const now = new Date().toISOString()
+      setLatest((cur) => cur?.map((c) => (ids.includes(c.id) ? { ...c, readAtUtc: now } : c)) ?? null)
+      setUnread((u) => Math.max(0, u - 1))
+      void Promise.all(ids.map((id) => markRead(id))).then(() => emitNotificationsChanged())
     }
-    if (n.url) navigate(n.url)
+    if (g.lead.url) navigate(g.lead.url)
   }
+
+  const entries = latest ? groupByEvent(latest).slice(0, 5) : null
+  const activity = summary
+    ? activityBesideFeed(summary.activity, entries?.flatMap((e) => e.members) ?? [], feedCoversOffice(prefs))
+    : []
 
   const count = (summary?.totalCount ?? 0) + unread
   const many = count > 99 || unreadMore
@@ -169,29 +201,48 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
             </Link>
           </div>
 
-          {latest === null && unread > 0 && <div className="muted" style={{ padding: 14, fontSize: 13 }}>Yüklənir…</div>}
-          {latest && latest.length > 0 && (
+          {latest === null && unread > 0 && <div style={{ padding: 14, fontSize: 13, color: 'var(--c600)' }}>Yüklənir…</div>}
+          {entries && entries.length > 0 && (
             <div>
-              {latest.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => openLine(n)}
-                  style={{
-                    display: 'flex', gap: 10, alignItems: 'flex-start', width: '100%', padding: '10px 14px', border: 'none',
-                    borderBottom: '1px solid var(--c50)', background: n.readAtUtc ? 'transparent' : 'var(--c50)', textAlign: 'left',
-                    cursor: 'pointer', font: 'inherit',
-                  }}
-                >
-                  <NotificationKindIcon typeKey={n.typeKey} size={30} />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13, fontWeight: n.readAtUtc ? 600 : 800, color: 'var(--c900)' }}>{n.body}</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)', marginTop: 2 }}>
-                      {metaLine(n.branchName, n.occurredAtUtc, n.wasOffline)}
+              {entries.map((g) => {
+                const n = g.lead
+                const kinds = g.members.map((m) => m.typeKey)
+                const meta = metaLine(n.branchName, n.occurredAtUtc, n.wasOffline)
+                const kindLabel = [...new Set(kinds.map((k) => lookOf(k).label))].join(' və ')
+                return (
+                  <button
+                    key={g.key}
+                    type="button"
+                    className="notif-row"
+                    onClick={() => openEntry(g)}
+                    aria-label={kindLabel + ': ' + n.body + ' ' + meta + (g.unread ? ', oxunmayıb' : '')}
+                    style={{
+                      display: 'flex', gap: 10, alignItems: 'center', width: '100%', padding: '10px 14px', border: 'none',
+                      borderBottom: '1px solid var(--c100)', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                      ['--row-bg' as string]: g.unread ? UNREAD_BG : '#fff',
+                      boxShadow: g.unread ? 'inset 3px 0 0 ' + UNREAD_BAR : undefined,
+                    }}
+                  >
+                    <NotificationEntryIcon typeKeys={kinds} size={30} ring={g.unread ? UNREAD_BG : '#fff'} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span
+                        style={{
+                          display: 'block', fontSize: 13, lineHeight: 1.4, fontWeight: g.unread ? 700 : 500,
+                          color: g.unread ? 'var(--c900)' : 'var(--c600)',
+                        }}
+                      >
+                        {n.body}
+                      </span>
+                      <span style={{ display: 'block', fontSize: 12, color: g.unread ? 'var(--c600)' : 'var(--c500)', marginTop: 2 }}>
+                        {meta}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              ))}
+                    {g.unread && (
+                      <span aria-hidden="true" style={{ flex: 'none', width: 8, height: 8, borderRadius: 999, background: UNREAD_BAR }} />
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
 
@@ -206,21 +257,21 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
             </div>
           )}
 
-          {summary && summary.activity.length > 0 && (
+          {activity.length > 0 && (
             <div>
               <div style={SEC}>Son hərəkət</div>
-              {summary.activity.map((a, i) => (
+              {activity.map((a, i) => (
                 <Link key={i} to={a.linkTo} onClick={() => setOpen(false)} style={{ ...ITEM, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ flex: 'none', width: 7, height: 7, borderRadius: 999, background: a.isIn ? 'var(--leaf, #2e9e44)' : '#c0762a' }} />
                   <span style={{ flex: 1, minWidth: 0 }}>{a.message}</span>
-                  <span style={{ flex: 'none', color: 'var(--c400)', fontVariantNumeric: 'tabular-nums' }}>{a.at}</span>
+                  <span style={{ flex: 'none', color: 'var(--c500)', fontVariantNumeric: 'tabular-nums' }}>{a.at}</span>
                 </Link>
               ))}
             </div>
           )}
 
-          {(!summary || (summary.items.length === 0 && summary.activity.length === 0)) && latest?.length === 0 && (
-            <div className="muted" style={{ padding: 16, fontSize: 13, textAlign: 'center' }}>
+          {(!summary || (summary.items.length === 0 && activity.length === 0)) && latest?.length === 0 && (
+            <div style={{ padding: 16, fontSize: 13, textAlign: 'center', color: 'var(--c600)' }}>
               Hələ bildiriş yoxdur
             </div>
           )}
@@ -238,20 +289,21 @@ export function NotificationBell({ actionItems = true }: { actionItems?: boolean
             onBlur={() => setToastHeld(false)}
             style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 12px 12px 14px', width: 340, maxWidth: '100%', boxShadow: 'var(--sh)' }}
           >
-            <NotificationKindIcon typeKey={toast.typeKey} size={32} />
+            <NotificationEntryIcon typeKeys={[toast.lead.typeKey]} size={32} />
             <button
               type="button"
-              aria-label={`${toast.title}: ${toast.body}`}
+              aria-label={toast.lead.title + ': ' + toast.lead.body + (toast.others > 0 ? '. Daha ' + toast.others + ' bildiriş' : '')}
               onClick={() => {
                 setToast(null)
                 setToastHeld(false)
-                if (toast.url) navigate(toast.url)
+                navigate(toast.others > 0 ? '/admin/notifications' : toast.lead.url ?? '/admin/notifications')
               }}
               style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit' }}
             >
-              <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5, color: 'var(--c900)', lineHeight: 1.4 }}>{toast.body}</span>
-              <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)', marginTop: 3 }}>
-                {metaLine(toast.branchName, toast.occurredAtUtc, toast.wasOffline)}
+              <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5, color: 'var(--c900)', lineHeight: 1.4 }}>{toast.lead.body}</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--c600)', marginTop: 3 }}>
+                {metaLine(toast.lead.branchName, toast.lead.occurredAtUtc, toast.lead.wasOffline)}
+                {toast.others > 0 ? ' · daha ' + toast.others + ' bildiriş' : ''}
               </span>
             </button>
             <button
