@@ -12,6 +12,7 @@ const fake = vi.hoisted(() => ({
     stopped: boolean
     onclose?: () => void
     resolveStart?: () => void
+    handlers: Record<string, (payload: unknown) => void>
   }>,
   holdStart: false,
 }))
@@ -26,10 +27,10 @@ vi.mock('@microsoft/signalr', () => {
     withAutomaticReconnect() { return this }
     configureLogging() { return this }
     build() {
-      const c: (typeof fake.conns)[number] = { started: false, stopped: false }
+      const c: (typeof fake.conns)[number] = { started: false, stopped: false, handlers: {} }
       fake.conns.push(c)
       return {
-        on: () => {},
+        on: (name: string, fn: (payload: unknown) => void) => { c.handlers[name] = fn },
         onreconnecting: () => {},
         onreconnected: () => {},
         onclose: (fn: () => void) => { c.onclose = fn },
@@ -87,5 +88,19 @@ describe('live channel lifecycle', () => {
     await vi.waitFor(() => expect(hub.liveStatus()).toBe('live'))
     expect(fake.conns).toHaveLength(2)
     expect(onReconnected).toHaveBeenCalledTimes(1)
+  })
+
+  it('remembers what it put on screen, so the push about the same arrival is not shown again in the open app', async () => {
+    const hub = await load()
+    const { coveredByLive } = await import('./foregroundPush')
+    const onItems = vi.fn()
+    hub.subscribeLive({ onItems })
+    await vi.waitFor(() => expect(hub.liveStatus()).toBe('live'))
+    const push = { title: 'İşçi giriş etdi', body: 'X işə giriş etdi.', url: '/admin/employees/p1' }
+    expect(coveredByLive(push)).toBe(false)
+
+    fake.conns[0].handlers['notifications']({ items: [{ id: 'n1', typeKey: 'attendance.check_in', url: '/admin/employees/p1' }] })
+    expect(onItems).toHaveBeenCalledTimes(1)
+    expect(coveredByLive(push)).toBe(true)
   })
 })

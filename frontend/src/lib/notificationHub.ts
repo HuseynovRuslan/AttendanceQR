@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../api/client'
 import { getStreamTicket, type CenterNotification } from '../api/notificationCenter'
+import { noteLiveItems } from './foregroundPush'
 
 /**
  * The live channel to the notification module (backend NotificationsHub at /hubs/notifications): an open panel hears
@@ -70,6 +71,8 @@ async function start(): Promise<void> {
       conn.on('notifications', (payload: { items?: LiveItem[] }) => {
         const items = Array.isArray(payload?.items) ? payload.items : []
         if (items.length === 0) return
+        // The push about the same thing, arriving while the app is open, is then not shown a second time.
+        noteLiveItems(items)
         for (const l of listeners) l.onItems?.(items)
       })
       conn.onreconnecting(() => setStatus('reconnecting'))
