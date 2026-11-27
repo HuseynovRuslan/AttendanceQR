@@ -7,6 +7,11 @@ export interface JwtClaims {
   exp?: number
   /** "1" while the account is on a temporary PIN and must set its own before using the app. */
   mcp?: string
+  /** The account's TokenVersion when this token was issued — it changes whenever the sessions are ended
+   *  (PIN reset, «hər yerdən çıxış»). A device's push subscription is bound to it; see lib/push.ts. */
+  tv?: string
+  /** Set on an operator's support/view session in someone else's account. */
+  imp?: string
 }
 
 /** The screen a role lands on after login: staff → admin panel, everyone else → the mobile home. */

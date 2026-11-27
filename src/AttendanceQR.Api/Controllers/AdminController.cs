@@ -98,7 +98,10 @@ public class AdminController : ControllerBase
             "pending" => q.Where(e => e.ActivatedAtUtc == null),
             // Never got going: no invite accepted, OR still holding the PIN an admin generated.
             "notstarted" => q.Where(e => e.ActivatedAtUtc == null || e.MustChangePin),
-            "nopush" => q.Where(e => !_db.PushSubscriptions.Any(p => p.EmployeeId == e.Id)),
+            // A device counts only while its session is the current one (PushSessionBinding) — a revoked
+            // session's row reaches nobody, so it must not read as «push açıq».
+            "nopush" => q.Where(e => !_db.PushSubscriptions.Any(p => p.EmployeeId == e.Id
+                && (p.TokenVersion == e.TokenVersion || p.TokenVersion < 0))),
             "nodevice" => q.Where(e => !_db.DeviceBindings.Any(d => d.EmployeeId == e.Id && d.IsActive)),
             _ => q,
         };
@@ -191,7 +194,8 @@ public class AdminController : ControllerBase
                 Activated = e.ActivatedAtUtc != null,
                 e.MustChangePin,
                 e.LastActiveAtUtc,
-                PushEnabled = _db.PushSubscriptions.Any(p => p.EmployeeId == e.Id),
+                PushEnabled = _db.PushSubscriptions.Any(p => p.EmployeeId == e.Id
+                    && (p.TokenVersion == e.TokenVersion || p.TokenVersion < 0)),
                 DeviceCount = _db.DeviceBindings.Count(d => d.EmployeeId == e.Id && d.IsActive),
                 Newest = _db.DeviceBindings
                     .Where(d => d.EmployeeId == e.Id && d.IsActive)
@@ -269,7 +273,8 @@ public class AdminController : ControllerBase
             .Select(x => new
             {
                 Employee = x,
-                PushEnabled = _db.PushSubscriptions.Any(p => p.EmployeeId == x.Id),
+                PushEnabled = _db.PushSubscriptions.Any(p => p.EmployeeId == x.Id
+                    && (p.TokenVersion == x.TokenVersion || p.TokenVersion < 0)),
                 DeviceCount = _db.DeviceBindings.Count(d => d.EmployeeId == x.Id && d.IsActive),
                 Newest = _db.DeviceBindings
                     .Where(d => d.EmployeeId == x.Id && d.IsActive)
@@ -366,7 +371,8 @@ public class AdminController : ControllerBase
         // opened the app has no push subscription for a reason that is not about notifications, and
         // counting them would hide how well the reachable ones are covered.
         var noPush = await q.CountAsync(
-            e => e.ActivatedAtUtc != null && !_db.PushSubscriptions.Any(p => p.EmployeeId == e.Id), ct);
+            e => e.ActivatedAtUtc != null && !_db.PushSubscriptions.Any(p => p.EmployeeId == e.Id
+                && (p.TokenVersion == e.TokenVersion || p.TokenVersion < 0)), ct);
         var noDevice = await q.CountAsync(
             e => !_db.DeviceBindings.Any(d => d.EmployeeId == e.Id && d.IsActive), ct);
         // «İşdən çıxanlar» is counted company-wide and whichever list is on screen, because the button
