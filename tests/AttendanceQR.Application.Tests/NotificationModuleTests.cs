@@ -976,8 +976,24 @@ public class NotificationModuleTests
         public int CancelOnCall { get; init; }
         public CancellationTokenSource? Cancel { get; init; }
         public Action? OnSend { get; init; }
+        /// <summary>What the push services make of each attempt, in turn (the last one repeats); null = Reached decides.</summary>
+        public PushDelivery[]? Outcomes { get; init; }
         public List<(string Title, string Body, string? Url)> Sent { get; } = [];
         private int _calls;
+        private int _attempt;
+
+        public async Task<IReadOnlyDictionary<Guid, PushDelivery>> NotifyEachAsync(
+            IReadOnlyCollection<Guid> employeeIds, string title, string body, string? url, CancellationToken ct = default)
+        {
+            if (Outcomes is null)
+            {
+                var reached = await NotifyEmployeesAsync(employeeIds, title, body, url, ct);
+                return employeeIds.ToDictionary(id => id, _ => reached > 0 ? PushDelivery.Delivered : PushDelivery.NoDevice);
+            }
+            var result = Outcomes[Math.Min(_attempt++, Outcomes.Length - 1)];
+            Sent.Add((title, body, url));
+            return employeeIds.ToDictionary(id => id, _ => result);
+        }
 
         public Task<int> NotifyEmployeesAsync(
             IReadOnlyCollection<Guid> employeeIds, string title, string body, string? url, CancellationToken ct = default)
@@ -992,6 +1008,81 @@ public class NotificationModuleTests
             Sent.Add((title, body, url));
             OnSend?.Invoke();
             return Task.FromResult(Reached);
+        }
+    }
+
+    // --- delivery outcomes: a push service that did not take it is not «sent» ------------------------------------------
+
+    [Fact]
+    public async Task A_push_the_service_did_not_take_stays_owed_and_is_tried_again_until_it_is_taken()
+    {
+        using var w = new AccessWorld();
+        Owed(w, w.M1, NotificationTypes.Late, At(9, 50));
+        var push = new FakePush { Outcomes = [PushDelivery.Transient, PushDelivery.Transient, PushDelivery.Delivered] };
+
+        await DeliverAsync(w, push, At(10, 0));
+        var row = Assert.Single(Pushes(w));
+        Assert.Equal(NotificationDeliveryStatus.Pending, row.Status);   // not «Sent»: nobody got it
+        Assert.Null(row.SentAtUtc);
+        Assert.Equal(1, row.Attempts);
+        Assert.StartsWith("Transient", row.LastError);
+        Assert.Equal(At(10, 0) + NotificationDispatcher.Backoff(1), row.NextAttemptUtc);
+
+        await DeliverAsync(w, push, At(10, 0).AddSeconds(10));        // not due yet: nothing is sent
+        Assert.Single(push.Sent);
+
+        await DeliverAsync(w, push, row.NextAttemptUtc);
+        row = Assert.Single(Pushes(w));
+        Assert.Equal(NotificationDeliveryStatus.Pending, row.Status);
+        Assert.Equal(2, row.Attempts);
+
+        await DeliverAsync(w, push, row.NextAttemptUtc);
+        row = Assert.Single(Pushes(w));
+        Assert.Equal(NotificationDeliveryStatus.Sent, row.Status);
+        Assert.Equal(3, push.Sent.Count);
+        Assert.Null(row.LastError);
+    }
+
+    [Fact]
+    public async Task A_push_never_taken_gives_up_after_the_last_attempt_and_a_refusal_at_once()
+    {
+        using var w = new AccessWorld();
+        Owed(w, w.M1, NotificationTypes.Late, At(9, 50));
+        var push = new FakePush { Outcomes = [PushDelivery.Transient] };
+        var at = At(10, 0);
+        for (var i = 0; i < NotificationPush.MaxAttempts; i++)
+        {
+            await DeliverAsync(w, push, at);
+            at = Pushes(w).Single().NextAttemptUtc;
+        }
+        var row = Assert.Single(Pushes(w));
+        Assert.Equal(NotificationDeliveryStatus.Failed, row.Status);
+        Assert.Equal(NotificationPush.MaxAttempts, row.Attempts);
+
+        using var w2 = new AccessWorld();
+        Owed(w2, w2.M1, NotificationTypes.Late, At(9, 50));
+        await DeliverAsync(w2, new FakePush { Outcomes = [PushDelivery.Rejected] }, At(10, 0));
+        row = Assert.Single(Pushes(w2));
+        Assert.Equal(NotificationDeliveryStatus.Failed, row.Status);
+        Assert.Equal(1, row.Attempts);
+        Assert.StartsWith("Rejected", row.LastError);
+    }
+
+    [Fact]
+    public void On_the_Android_app_a_burst_of_arrivals_takes_one_slot_in_the_drawer_and_nothing_else_does()
+    {
+        var arrival = FirebaseFcmSender.BuildMessage("t", "İşçi gecikdi", "X işə 25 dəqiqə gecikdi.", "/admin/employees/" + Guid.NewGuid());
+        var digest = FirebaseFcmSender.BuildMessage("t", "Davamiyyət", "12 yeni bildiriş", "/admin/notifications");
+        Assert.Equal("qrlog-attendance", arrival.Android.Notification.Tag);
+        Assert.Equal("qrlog-attendance", digest.Android.Notification.Tag);
+        Assert.Equal("qrlog-attendance", digest.Android.CollapseKey);
+
+        // A check-out reminder, a staff alert, an announcement: each its own notification, as before.
+        foreach (var url in new[] { "/scan", "/admin/live", "/home", null })
+        {
+            var other = FirebaseFcmSender.BuildMessage("t", "x", "y", url);
+            Assert.Null(other.Android.Notification);
+            Assert.Null(other.Android.CollapseKey);
         }
     }
 

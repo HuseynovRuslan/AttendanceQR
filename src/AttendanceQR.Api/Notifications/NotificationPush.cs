@@ -20,8 +20,10 @@ namespace AttendanceQR.Api.Notifications;
 /// kept waiting behind the administrator's thousand rows (which a batch of the oldest rows did: measured, 10 000
 /// arrivals left most managers' pushes queued for minutes).
 ///
-/// Status per delivery: Sent / Digested (part of a summary) / NoDevice (nobody subscribed — not retried) / Skipped /
-/// Failed after <see cref="MaxAttempts"/> tries with a growing delay. Each person's outcome is saved the moment their
+/// Status per delivery: Sent / Digested (part of a summary) — a push service took it; NoDevice (nobody subscribed —
+/// not retried); Skipped; Failed — refused by the push service (a retry would be refused the same way), or still not
+/// taken after <see cref="MaxAttempts"/> tries. A timeout, a 429 or a 5xx is not a send: the rows stay Pending and are
+/// tried again with a growing delay (<see cref="NotificationDispatcher.Backoff"/>). Each person's outcome is saved the moment their
 /// push returns, so a pass cut short (a deploy's stop, a failing save) re-sends at most the one push that was in
 /// flight — never a whole batch. A pass stops starting new people after <see cref="PassBudget"/>, so a slow push
 /// provider delays pushes and nothing else.
@@ -118,19 +120,41 @@ public sealed class NotificationPush
                     : Digest(items);
                 try
                 {
-                    var reached = await notifier().NotifyEmployeesAsync([person], title, body, url, ct);
-                    var status = reached == 0 ? NotificationDeliveryStatus.NoDevice
-                        : items.Count == 1 ? NotificationDeliveryStatus.Sent
-                        : NotificationDeliveryStatus.Digested;
-                    foreach (var d in items)
+                    var outcome = await notifier().NotifyEachAsync([person], title, body, url, ct);
+                    var result = outcome.TryGetValue(person, out var r) ? r : PushDelivery.NoDevice;
+                    if (result is PushDelivery.Delivered or PushDelivery.NoDevice)
                     {
-                        d.Status = status;
-                        d.Attempts++;
-                        d.SentAtUtc = nowUtc;
-                        d.LastError = null;
+                        var status = result == PushDelivery.NoDevice ? NotificationDeliveryStatus.NoDevice
+                            : items.Count == 1 ? NotificationDeliveryStatus.Sent
+                            : NotificationDeliveryStatus.Digested;
+                        foreach (var d in items)
+                        {
+                            d.Status = status;
+                            d.Attempts++;
+                            d.SentAtUtc = nowUtc;
+                            d.LastError = null;
+                        }
+                        if (result == PushDelivery.Delivered)
+                            sent++;
                     }
-                    if (reached > 0)
-                        sent++;
+                    else
+                    {
+                        // Not delivered. Transient (a timeout, 429, 5xx): pending, tried again later. Rejected: the push
+                        // service refused it for a reason a retry will not change — failed now, not six times.
+                        foreach (var d in items)
+                        {
+                            d.Attempts++;
+                            d.LastError = result == PushDelivery.Transient
+                                ? "Transient: the push service did not take it (timeout, 429 or 5xx)"
+                                : "Rejected: the push service refused it";
+                            if (result == PushDelivery.Rejected || d.Attempts >= MaxAttempts)
+                                d.Status = NotificationDeliveryStatus.Failed;
+                            else
+                                d.NextAttemptUtc = nowUtc + NotificationDispatcher.Backoff(d.Attempts);
+                        }
+                        _logger.LogWarning("Notifications: push to {Recipient} not delivered ({Result}, {Count} waiting)",
+                            person, result, items.Count);
+                    }
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
