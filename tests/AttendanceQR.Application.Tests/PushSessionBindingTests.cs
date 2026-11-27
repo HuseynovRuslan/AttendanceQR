@@ -180,6 +180,31 @@ public class PushSessionBindingTests
         Assert.Empty(w.Rows());
     }
 
+    [Fact]
+    public async Task A_support_session_never_creates_refreshes_or_takes_over_a_subscription()
+    {
+        using var w = new World();
+        var admin = w.Person(TenantA, "Admin");
+        var operatorId = Guid.NewGuid();
+
+        // An explicit enable, the app's automatic re-bind, a native registration: refused, nothing written.
+        foreach (var refresh in new[] { false, true })
+        {
+            var refused = await w.Push(TenantA, admin, operatorId).Subscribe(Sub("https://push.example/operator", refresh));
+            Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(refused).StatusCode);
+        }
+        var native = await w.Push(TenantA, admin, operatorId).RegisterNative(new PushRegisterNativeRequest("operator-token"));
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(native).StatusCode);
+        Assert.Empty(w.Rows());
+
+        // The admin's own phone, subscribed by the admin, is not taken over by the support session's re-bind either.
+        await w.Push(TenantA, admin).Subscribe(Sub("https://push.example/admin-phone"));
+        await w.Push(TenantA, admin, operatorId).Subscribe(Sub("https://push.example/admin-phone", refresh: true));
+        var row = Assert.Single(w.Rows());
+        Assert.Equal(admin, row.EmployeeId);
+        Assert.Equal(1, await w.Notify(TenantA, admin));
+    }
+
     private static PushSubscribeRequest Sub(string endpoint, bool refresh = false) =>
         new(endpoint, "p256dh-key", "auth-secret", refresh);
 
@@ -277,19 +302,19 @@ public class PushSessionBindingTests
             return db.PushSubscriptions.IgnoreQueryFilters().AsNoTracking().ToList();
         }
 
-        /// <summary>The push endpoints as the signed-in <paramref name="employeeId"/> reaches them.</summary>
-        public PushController Push(Guid tenantId, Guid employeeId)
+        /// <summary>The push endpoints as the signed-in <paramref name="employeeId"/> reaches them — or, with
+        /// <paramref name="operatorId"/>, as a support session borrowing that account («imp» claim).</summary>
+        public PushController Push(Guid tenantId, Guid employeeId, Guid? operatorId = null)
         {
             var db = Context(tenantId);
+            var claims = new List<Claim> { new("sub", employeeId.ToString()), new("role", nameof(EmployeeRole.Employee)) };
+            if (operatorId is { } op)
+                claims.Add(new Claim("imp", op.ToString()));
             return new PushController(db, new PushOptions { PublicKey = "pub", PrivateKey = "priv" }, NotifierFor(db))
             {
                 ControllerContext = new ControllerContext
                 {
-                    HttpContext = new DefaultHttpContext
-                    {
-                        User = new ClaimsPrincipal(new ClaimsIdentity(
-                            [new Claim("sub", employeeId.ToString()), new Claim("role", nameof(EmployeeRole.Employee))], "test")),
-                    },
+                    HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")) },
                 },
             };
         }
