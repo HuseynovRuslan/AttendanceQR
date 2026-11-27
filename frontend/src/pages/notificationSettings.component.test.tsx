@@ -37,7 +37,8 @@ vi.mock('../lib/push', () => ({
   isSubscribed: () => net.subscribed(),
   enablePush: async () => 'ok',
   disablePush: async () => true,
-  sendTestPush: async () => 1,
+  sendTestPush: async () => ({ reached: 1, transient: false }),
+  TEST_PUSH_TRANSIENT: 'Müvəqqəti xəta — bir azdan yenidən yoxlayın',
 }))
 vi.mock('../lib/host', () => ({ isNativeApp: () => false }))
 

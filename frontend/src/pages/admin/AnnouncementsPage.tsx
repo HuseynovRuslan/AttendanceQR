@@ -8,7 +8,7 @@ import {
   type AnnouncementAudience,
 } from '../../api/announcements'
 import { getEmployeeSelection, type EmployeeSelectionRow } from '../../api/admin'
-import { sendTestPush } from '../../lib/push'
+import { sendTestPush, TEST_PUSH_TRANSIENT } from '../../lib/push'
 import { IconSend, IconTrash, IconX } from '../../components/icons'
 import { fmtDateOfInstant, fmtFullDateTime } from '../../lib/format'
 import { listFailureText } from '../../lib/listFailure'
@@ -107,11 +107,12 @@ export function AnnouncementsPage() {
   async function onTest() {
     setTesting(true)
     setTestMsg(null)
-    const reached = await sendTestPush()
+    const result = await sendTestPush()
     setTesting(false)
-    if (reached === null) setTestMsg('Göndərilmədi')
-    else if (reached === 0) setTestMsg('Sizdə bildiriş açıq deyil — telefonda skan edib açın')
-    else setTestMsg(`Göndərildi (${reached} cihaz)`)
+    if (result === null) setTestMsg('Göndərilmədi')
+    else if (result.transient) setTestMsg(TEST_PUSH_TRANSIENT)
+    else if (result.reached === 0) setTestMsg('Sizdə bildiriş açıq deyil — telefonda skan edib açın')
+    else setTestMsg(`Göndərildi (${result.reached} cihaz)`)
   }
 
   async function onRetire(id: string) {

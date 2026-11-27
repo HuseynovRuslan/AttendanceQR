@@ -11,7 +11,7 @@ import { NotificationKindIcon } from '../components/NotificationKindIcon'
 import { SwitchRow } from '../components/Switch'
 import { IconBell, IconCheck, IconChevronLeft, IconChevronRight, IconRefresh, IconSearch, IconX } from '../components/icons'
 import { isNativeApp } from '../lib/host'
-import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported, sendTestPush } from '../lib/push'
+import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported, sendTestPush, TEST_PUSH_TRANSIENT } from '../lib/push'
 import { isStandalone } from '../lib/device'
 import { useLeaveGuard } from '../lib/useLeaveGuard'
 
@@ -660,10 +660,11 @@ function DeviceSection() {
   async function test() {
     setBusy(true)
     setMsg(null)
-    const reached = await within(sendTestPush(), 15000, null)
+    const result = await within(sendTestPush(), 15000, null)
     setBusy(false)
-    if (reached === null) setMsg('Sınaq bildirişi göndərilmədi. Bir azdan yenidən cəhd edin.')
-    else if (reached === 0) setMsg('Bu cihazın abunəsi tapılmadı — bildirişləri söndürüb yenidən açın.')
+    if (result === null) setMsg('Sınaq bildirişi göndərilmədi. Bir azdan yenidən cəhd edin.')
+    else if (result.transient) setMsg(TEST_PUSH_TRANSIENT)
+    else if (result.reached === 0) setMsg('Bu cihazın abunəsi tapılmadı — bildirişləri söndürüb yenidən açın.')
     else setMsg('Sınaq bildirişi göndərildi — bir neçə saniyəyə gəlməlidir.')
   }
 
