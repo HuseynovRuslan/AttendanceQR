@@ -1077,6 +1077,13 @@ public class NotificationModuleTests
         Assert.Equal("qrlog-attendance", digest.Android.Notification.Tag);
         Assert.Equal("qrlog-attendance", digest.Android.CollapseKey);
 
+        // The slot carries the moment it was sent. Left unset the SDK sends year 1 and the phone shows «2032y».
+        foreach (var sent in new[] { arrival, digest })
+        {
+            Assert.Equal(DateTimeKind.Utc, sent.Android.Notification.EventTimestamp.Kind);
+            Assert.InRange(sent.Android.Notification.EventTimestamp, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(1));
+        }
+
         // A check-out reminder, a staff alert, an announcement: each its own notification, as before.
         foreach (var url in new[] { "/scan", "/admin/live", "/home", null })
         {
